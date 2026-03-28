@@ -585,6 +585,7 @@ def analizar_detalles(detalles):
 # ============================================================
 
 @app.route("/")
+@app.route("/validPromotion")
 def inicio():
     excel, export = listar_archivos()
     return render_template("index.html", excel_files=excel, export_files=export)
