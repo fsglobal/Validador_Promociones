@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Sistema de Promociones</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: #f4f6f9;
+            margin: 0;
+            padding: 0;
+            color: #333;
+        }
+
+        .contenedor {
+            max-width: 1200px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+
+        .titulo {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: #003366;
+        }
+
+        .subtitulo {
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+        }
+
+        .panel-lateral {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,.08);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            font-weight: 600;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #003366;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 18px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-weight: 500;
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+            transition: .2s;
+        }
+
+        .btn-primary {
+            background: #003366;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #002244;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: #fff;
+        }
+
+        .btn-success:hover {
+            background: #1e7e34;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background: #a71d2a;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn-dark {
+            background: #212529;
+            color: #fff;
+        }
+
+        .btn-dark:hover {
+            background: #101214;
+        }
+
+        input[type="text"],
+        input[type="file"] {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            margin-top: 5px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .file-list ul {
+            margin: 0;
+            padding: 0;
+        }
+
+        .file-list li {
+            list-style: none;
+            padding: 5px 0;
+            font-size: 14px;
+        }
+
+        #alerta {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            display: none;
+            opacity: 0;
+            transition: opacity .5s ease-in-out;
+            z-index: 9999;
+        }
+
+        #alerta.error {
+            background: #dc3545;
+        }
+
+        #alerta.warn {
+            background: #ffc107;
+            color: #000;
+        }
+
+        #progressBar {
+            width: 100%;
+            height: 8px;
+            background: #ddd;
+            border-radius: 6px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        #progress {
+            width: 0%;
+            height: 100%;
+            background: linear-gradient(45deg, #003366, #0056b3);
+            border-radius: 6px;
+            transition: width .3s;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div id="alerta"></div>
+
+<div class="contenedor">
+    <div class="titulo">Sistema de Promociones</div>
+    <div class="subtitulo">Validador y Gestor de Promociones</div>
+
+    <div class="dashboard">
+
+        <div>
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-check-circle"></i>
+                    <span>Validar Promociones</span>
+                </div>
+
+                <form id="validarForm" action="/procesar" method="POST">
+                    <label>Buscar promociones del usuario:</label>
+                    <input type="text" name="rc" placeholder="Ej: FERNANDO">
+                    <br><br>
+                    <button type="submit" class="btn btn-success">Ejecutar Validación</button>
+                </form>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-upload"></i>
+                    <span>Subir Archivos para Validación</span>
+                </div>
+
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <label><b>Excel (.xlsx):</b></label>
+                    <input type="file" name="excel_files" id="excelFiles" multiple accept=".xlsx">
+
+                    <br><br>
+
+                    <label><b>Export (.txt):</b></label>
+                    <input type="file" name="export_files" id="exportFiles" multiple accept=".txt">
+
+                    <br><br>
+
+                    <button type="submit" class="btn btn-primary" style="width:100%;">Cargar archivos</button>
+
+                    <div id="progressBar">
+                        <div id="progress"></div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-folder-open"></i>
+                    <span>Archivos cargados</span>
+                </div>
+
+                <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                    <div class="file-list" style="flex:1; min-width:280px;">
+                        <h3>Excel</h3>
+                        <ul id="listaExcel">
+                            {% for f in excel_files %}
+                                <li>{{ f }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+
+                    <div class="file-list" style="flex:1; min-width:280px;">
+                        <h3>Export</h3>
+                        <ul id="listaExport">
+                            {% for f in export_files %}
+                                <li>{{ f }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-trash-alt"></i>
+                    <span>Administrar Archivos</span>
+                </div>
+
+                <button type="button" class="btn btn-danger" onclick="borrar('excel')">Borrar Excel</button>
+                <button type="button" class="btn btn-secondary" onclick="borrar('export')">Borrar Export</button>
+            </div>
+        </div>
+
+        <div class="panel-lateral">
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-database"></i>
+                    <span>Gestor de Promociones</span>
+                </div>
+
+                <p>Consulta historial de promociones y realiza búsquedas por SKU o ID de promoción.</p>
+
+                <a href="/gestor" class="btn btn-primary">Abrir Gestor</a>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-book"></i>
+                    <span>Repositorio de Promociones</span>
+                </div>
+
+                <p>Importa Excel históricos desde <b>ExcelRepositorio</b> para construir la base del gestor.</p>
+
+                <a href="/repositorio" class="btn btn-dark">Abrir Repositorio</a>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function mostrarAlerta(msg, tipo) {
+    const alerta = document.getElementById("alerta");
+    const tipoFinal = tipo || "ok";
+
+    alerta.textContent = msg;
+    alerta.className = "";
+
+    if (tipoFinal === "error") {
+        alerta.classList.add("error");
+    } else if (tipoFinal === "warn") {
+        alerta.classList.add("warn");
+    }
+
+    alerta.style.display = "block";
+
+    setTimeout(function() {
+        alerta.style.opacity = "1";
+    }, 100);
+
+    setTimeout(function() {
+        alerta.style.opacity = "0";
+        setTimeout(function() {
+            alerta.style.display = "none";
+        }, 500);
+    }, 4000);
+}
+
+async function subirArchivos(e) {
+    e.preventDefault();
+
+    const formData = new FormData();
+    const excelFiles = document.getElementById("excelFiles").files;
+    const exportFiles = document.getElementById("exportFiles").files;
+
+    for (const f of excelFiles) {
+        formData.append("excel_files", f);
+    }
+
+    for (const f of exportFiles) {
+        formData.append("export_files", f);
+    }
+
+    document.getElementById("progressBar").style.display = "block";
+
+    try {
+        const response = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        document.getElementById("progress").style.width = "100%";
+
+        setTimeout(function() {
+            document.getElementById("progressBar").style.display = "none";
+            document.getElementById("progress").style.width = "0%";
+        }, 900);
+
+        actualizarListas(data.lista_excel, data.lista_export);
+        mostrarAlerta("Excel cargados: " + data.excel + " — Export cargados: " + data.export, "ok");
+    } catch (err) {
+        mostrarAlerta("Error al subir archivos", "error");
+    }
+}
+
+async function borrar(tipo) {
+    const formData = new FormData();
+    formData.append("tipo", tipo);
+
+    try {
+        const response = await fetch("/borrar", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        actualizarListas(data.lista_excel, data.lista_export);
+        mostrarAlerta(data.mensaje, (data.errores && data.errores.length) ? "warn" : "ok");
+    } catch (error) {
+        mostrarAlerta("Error al borrar archivos", "error");
+    }
+}
+
+function actualizarListas(excel, exportList) {
+    const listaExcel = document.getElementById("listaExcel");
+    const listaExport = document.getElementById("listaExport");
+
+    listaExcel.innerHTML = "";
+    listaExport.innerHTML = "";
+
+    excel.forEach(function(f) {
+        listaExcel.innerHTML += "<li>" + f + "</li>";
+    });
+
+    exportList.forEach(function(f) {
+        listaExport.innerHTML += "<li>" + f + "</li>";
+    });
+}
+
+const uploadForm = document.getElementById("uploadForm");
+if (uploadForm) {
+    uploadForm.addEventListener("submit", subirArchivos);
+}
+</script>
+
+</body>
+</html>

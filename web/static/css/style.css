@@ -1,0 +1,294 @@
+/* ============================================================
+   RESET GLOBAL
+============================================================ */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+body {
+    background: #eef2f7;
+    color: #2b2b2b;
+    padding: 25px;
+    line-height: 1.5;
+}
+
+/* ============================================================
+   CONTENEDOR GENERAL
+============================================================ */
+.contenedor, .resultado-container {
+    max-width: 1100px;
+    margin: auto;
+}
+
+/* ============================================================
+   TITULOS
+============================================================ */
+h1, .titulo-principal {
+    font-size: 32px;
+    font-weight: 900;
+    color: #1d3557;
+    margin-bottom: 10px;
+    letter-spacing: -0.5px;
+}
+
+.subtitulo {
+    font-size: 18px;
+    margin-bottom: 25px;
+    font-weight: 600;
+    color: #457b9d;
+}
+
+.seccion-titulo {
+    margin-top: 30px;
+    font-size: 24px;
+    font-weight: 800;
+    color: #0055aa;
+}
+
+/* ============================================================
+   TARJETAS DE INTERFAZ (INDEX)
+============================================================ */
+.card {
+    background: white;
+    padding: 22px 28px;
+    border-radius: 14px;
+    margin-bottom: 25px;
+    border: none;
+    box-shadow: 0px 8px 22px rgba(0,0,0,0.08);
+    transition: transform .2s ease, box-shadow .2s ease;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0px 12px 26px rgba(0,0,0,0.12);
+}
+
+.azul     { border-left: 8px solid #007bff; }
+.verde    { border-left: 8px solid #28a745; }
+.rojo     { border-left: 8px solid #dc3545; }
+.amarillo { border-left: 8px solid #ffc107; }
+.gris     { border-left: 8px solid #6c757d; }
+.celeste  { border-left: 8px solid #17a2b8; }
+
+.card h2 {
+    font-size: 22px;
+    margin-bottom: 12px;
+    font-weight: 700;
+}
+
+/* ============================================================
+   BOTONES
+============================================================ */
+.btn, button {
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+    font-size: 15px;
+    border: none;
+    transition: 0.2s;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+}
+
+.btn.azul     { background: #007bff; color:white; }
+.btn.verde    { background: #28a745; color:white; }
+.btn.rojo     { background: #dc3545; color:white; }
+.btn.amarillo { background: #ffc107; color:black; }
+
+.btn.azul:hover     { background: #0069d9; }
+.btn.verde:hover    { background: #218838; }
+.btn.rojo:hover     { background: #c82333; }
+.btn.amarillo:hover { background: #d39e00; }
+
+/* ============================================================
+   INPUTS
+============================================================ */
+input[type="text"], input[type="file"] {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: 8px;
+    border: 1px solid #ccd5e0;
+    font-size: 15px;
+}
+
+input:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 5px #007bff66;
+    outline: none;
+}
+
+/* ============================================================
+   LISTA DE ARCHIVOS
+============================================================ */
+.file-list {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 14px;
+    border: 1px solid #cbd3da;
+}
+
+.file-list li {
+    padding: 6px;
+    margin-bottom: 6px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #dde3ea;
+    font-size: 14px;
+}
+
+/* ============================================================
+   ALERTAS
+============================================================ */
+#alerta {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 16px 26px;
+    border-radius: 10px;
+    font-weight: 700;
+    font-size: 15px;
+    display: none;
+    opacity: 0;
+    z-index: 9000;
+    color: white;
+    transition: opacity .4s;
+}
+
+#alerta.ok    { background: #28a745; }
+#alerta.error { background: #dc3545; }
+#alerta.warn  { background: #ffc107; color:black; }
+
+/* ============================================================
+   PROGRESS BAR
+============================================================ */
+#progressBar {
+    width: 100%;
+    background: #dde4eb;
+    border-radius: 8px;
+    height: 14px;
+    display: none;
+    overflow: hidden;
+}
+
+#progress {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(45deg, #007bff, #33a1ff);
+    animation: stripes 2s linear infinite;
+}
+
+@keyframes stripes {
+    from { background-position: 0 0; }
+    to   { background-position: 100px 0; }
+}
+
+/* ============================================================
+   OVERLAY LOADER VALIDACIÓN
+============================================================ */
+#loaderOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 99999;
+}
+
+.loader {
+    width: 85px;
+    height: 85px;
+    border-radius: 50%;
+    border: 10px solid #e0e0e0;
+    border-top: 10px solid #007bff;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================
+   RESULTADOS — TARJETAS PREMIUM
+============================================================ */
+.result-card {
+    background: #ffffff;
+    padding: 20px 24px;
+    border-radius: 14px;
+    margin-bottom: 22px;
+    border-left: 7px solid;
+    box-shadow: 0px 6px 18px rgba(0,0,0,0.10);
+    opacity: 0;
+    transform: translateY(15px);
+    animation: fadeIn .45s forwards;
+}
+
+@keyframes fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.result-card.ok { border-color: #28a745; }
+.result-card.error { border-color: #dc3545; }
+
+.result-title {
+    font-size: 19px;
+    font-weight: 800;
+    margin-bottom: 10px;
+    color: #1a1a1a;
+}
+
+.result-detalle li {
+    margin-bottom: 4px;
+    font-size: 15px;
+}
+
+.text-ok {
+    color: #28a745;
+    font-weight: 700;
+}
+
+.text-error {
+    color: #dc3545;
+    font-weight: 700;
+}
+
+.text-warn {
+    color: #d29e00;
+    font-weight: 700;
+}
+
+/* ============================================================
+   BOTÓN VOLVER
+============================================================ */
+.volver-btn {
+    display: inline-block;
+    padding: 12px 26px;
+    background: #007bff;
+    color: #fff;
+    border-radius: 10px;
+    margin-top: 35px;
+    text-decoration: none;
+    font-weight: 700;
+    transition: 0.3s;
+}
+
+.volver-btn:hover {
+    background: #005fcc;
+    transform: translateY(-2px);
+}
+
+/* ============================================================
+   RESPONSIVE
+============================================================ */
+@media (max-width: 780px) {
+    body { padding: 12px; }
+    .card { padding: 15px; }
+    .result-card { padding: 16px; }
+    h1 { font-size: 26px; }
+}
