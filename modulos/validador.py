@@ -1666,40 +1666,31 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
         return ok, detalles
 
     id_msje_asociado, promo_msje_asociada = obtener_promo_msje_asociada(grupo, promos_por_id)
-    if id_msje_asociado:
+    if id_msje_asociado and promo_msje_asociada:
+        agregar_detalle(
+            detalles,
+            "OK",
+            "MSJE",
+            f"ID Lista Locales <span class='text-blue'>({id_msje_asociado})</span> corresponde a MSJE / POPUP asociado a promoción <span class='text-blue'>({id_excel})</span>"
+        )
+        ok_msje_asociado = validar_promocion_mensaje(
+            detalles,
+            grupo,
+            promo_msje_asociada,
+            productos_excel,
+            nombre_lista_excel,
+            normalizar_texto(promo_msje_asociada["productLists"][0]) if promo_msje_asociada.get("productLists") else "",
+            listas_productos_export,
+        )
+        if not ok_msje_asociado:
+            ok = False
+    else:
         agregar_detalle(
             detalles,
             "INFO",
             "MSJE",
-            f"AJ / ID Lista Locales trae valor numérico <span class='text-blue'>({id_msje_asociado})</span>. Se evalúa como posible MSJE asociado"
+            "MSJE / POPUP: <span class='text-blue'>(No hay)</span>"
         )
-
-        if promo_msje_asociada:
-            agregar_detalle(
-                detalles,
-                "OK",
-                "MSJE",
-                f"Se detectó promo MSJE asociada en Export con ID <span class='text-blue'>({id_msje_asociado})</span>"
-            )
-            ok_msje_asociado = validar_promocion_mensaje(
-                detalles,
-                grupo,
-                promo_msje_asociada,
-                productos_excel,
-                nombre_lista_excel,
-                normalizar_texto(promo_msje_asociada["productLists"][0]) if promo_msje_asociada.get("productLists") else "",
-                listas_productos_export,
-            )
-            if not ok_msje_asociado:
-                ok = False
-        else:
-            ok = False
-            agregar_detalle(
-                detalles,
-                "ERR",
-                "MSJE",
-                f"AJ / ID Lista Locales <span class='text-blue'>({id_msje_asociado})</span> no corresponde a una promo MessageApplier válida en Export"
-            )
 
     # --------------------------------------------------------
     # LISTA PRODUCTOS / CONDICIÓN
