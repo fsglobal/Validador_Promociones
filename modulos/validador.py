@@ -420,6 +420,188 @@ def extraer_mecanica_pack(valor):
     return None
 
 
+def extraer_mecanica_combo_precio(valor):
+    """
+    Detecta mecánicas comerciales tipo 3x23990, donde el primer número es cantidad
+    y el segundo un precio total del combo.
+    """
+    txt = normalizar_texto(valor)
+    txt = txt.replace(" ", "")
+    m = re.search(r"(\d+)\s*[Xx]\s*(\d{4,})", txt)
+    if not m:
+        return None
+
+    cantidad = int(m.group(1))
+    monto = float(m.group(2))
+    if cantidad >= 2 and monto > 999:
+        return (cantidad, monto)
+    return None
+
+
+def es_nominal_un_producto(tipo_desc, productos_excel, cantidad_excel):
+    if tipo_desc != "NOMINAL":
+        return False
+    if len(productos_excel or set()) != 1:
+        return False
+    return cantidad_excel in {None, 0, 1}
+
+
+def obtener_competencia_esperada(area_responsable, tipo_desc, productos_excel, cantidad_excel):
+    area = normalizar_texto(area_responsable)
+    if area == "BYCP":
+        return None if es_nominal_un_producto(tipo_desc, productos_excel, cantidad_excel) else "Comp. X Promociones"
+    if area in {"FARMA", "BIENESTAR"}:
+        return "Comp. X Producto"
+    return None
+
+
+def validar_competencia_por_area(detalles, promo, area_responsable, tipo_desc, productos_excel, cantidad_excel):
+    area = normalizar_texto(area_responsable)
+    if not area:
+        agregar_detalle(detalles, "WARN", "ÁREA", "No se pudo determinar AreaResponsable desde hoja IMPUT/Input")
+        return True
+
+    agregar_detalle(detalles, "INFO", "ÁREA", f"AreaResponsable detectada: <span class='text-blue'>({area})</span>")
+    esperada = obtener_competencia_esperada(area, tipo_desc, productos_excel, cantidad_excel)
+    if esperada is None:
+        if area == "BYCP" and es_nominal_un_producto(tipo_desc, productos_excel, cantidad_excel):
+            agregar_detalle(detalles, "INFO", "COMPETENCIA", "Excepción BYCP detectada: NOMINAL de 1 producto. No se fuerza competencia por promoción")
+        return True
+
+    actual = promo.get("__tipo_competencia") or "-"
+    if actual == esperada:
+        agregar_detalle(detalles, "OK", "COMPETENCIA", f"Competencia correcta por regla de área: esperada <span class='text-blue'>({esperada})</span> y Export trae <span class='text-blue'>({actual})</span>")
+        return True
+
+    agregar_detalle(detalles, "ERR", "COMPETENCIA", f"Competencia incorrecta por regla de área. Area <span class='text-blue'>({area})</span> esperaba <span class='text-blue'>({esperada})</span> pero Export trae <span class='text-blue'>({actual})</span>")
+    return False
+
+
+def construir_resumen_mensaje(promo, nombre_lista_export, condition_skus):
+    origen = f"Lista <span class='text-blue'>({nombre_lista_export})</span>" if nombre_lista_export else (
+        f"SKU <span class='text-blue'>({', '.join(sorted(condition_skus))})</span>" if condition_skus else "SKU <span class='text-blue'>(-)</span>"
+    )
+    cantidad = promo.get("condition_item_quantity")
+    if cantidad is None:
+        cantidad = promo.get("condition_quantity")
+    return (
+        f"Tipo <span class='text-blue'>(MSJE)</span> | {origen} | "
+        f"Item cada <span class='text-blue'>({formatear_cantidad(cantidad)})</span> | "
+        f"Mensaje <span class='text-blue'>({promo.get('message_applier_name') or '-'})</span> | "
+        f"Salida <span class='text-blue'>({promo.get('message_output') or '-'})</span> | "
+        f"Texto <span class='text-blue'>({promo.get('message_text') or '-'})</span>"
+    )
+
+
+def validar_promocion_mensaje(detalles, grupo, promo, productos_excel, nombre_lista_excel, nombre_lista_export, listas_productos_export):
+    ok = True
+    condition_skus = normalizar_lista_skus(promo.get("condition_skus", []))
+    cantidad_msg = promo.get("condition_item_quantity")
+    if cantidad_msg is None:
+        cantidad_msg = promo.get("condition_quantity")
+
+    agregar_detalle(detalles, "INFO", "MSJE", construir_resumen_mensaje(promo, nombre_lista_export, condition_skus))
+
+    if promo.get("applier_type") != "MESSAGE":
+        ok = False
+        agregar_detalle(detalles, "ERR", "MSJE", "La campaña de mensaje debe viajar con MessageApplier")
+    else:
+        agregar_detalle(detalles, "OK", "MSJE", "MessageApplier detectado correctamente")
+
+    if nombre_lista_excel or nombre_lista_export:
+        if nombre_lista_excel == nombre_lista_export and nombre_lista_export:
+            agregar_detalle(detalles, "OK", "CONDICIÓN", f"Lista de condición del MSJE coincide: <span class='text-blue'>({nombre_lista_export})</span>")
+        else:
+            ok = False
+            agregar_detalle(detalles, "ERR", "CONDICIÓN", f"Lista de condición del MSJE no coincide. Excel <span class='text-blue'>({nombre_lista_excel or '-'})</span> vs Export <span class='text-blue'>({nombre_lista_export or '-'})</span>")
+    else:
+        if condition_skus == productos_excel:
+            agregar_detalle(detalles, "OK", "CONDICIÓN", "Los SKU de la condición del MSJE coinciden con columna C del Excel")
+        else:
+            ok = False
+            faltan = sorted(productos_excel - condition_skus)
+            sobran = sorted(condition_skus - productos_excel)
+            if faltan:
+                agregar_detalle(detalles, "ERR", "CONDICIÓN", f"Faltan SKU en condición MSJE respecto a columna C: <span class='text-blue'>({', '.join(faltan)})</span>")
+            if sobran:
+                agregar_detalle(detalles, "ERR", "CONDICIÓN", f"Sobran SKU en condición MSJE respecto a columna C: <span class='text-blue'>({', '.join(sobran)})</span>")
+
+    if cantidad_msg == 1:
+        agregar_detalle(detalles, "OK", "MSJE", "Cantidad de condición del mensaje correcta: item cada <span class='text-blue'>(1)</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "MSJE", f"La campaña de mensaje debe viajar con item cada = 1, pero Export trae <span class='text-blue'>({formatear_cantidad(cantidad_msg)})</span>")
+
+    if promo.get("message_applier_name"):
+        agregar_detalle(detalles, "OK", "MSJE", f"Nombre del mensaje detectado: <span class='text-blue'>({promo.get('message_applier_name')})</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "MSJE", "MessageApplier no informa messageName")
+
+    if normalizar_texto(promo.get("message_output")) == "SCREEN":
+        agregar_detalle(detalles, "OK", "MSJE", "Salida del mensaje correcta: <span class='text-blue'>(SCREEN)</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "MSJE", f"Salida del mensaje incorrecta. Export trae <span class='text-blue'>({promo.get('message_output') or '-'})</span>")
+
+    if promo.get("message_text"):
+        agregar_detalle(detalles, "INFO", "MSJE", f"Texto del mensaje: <span class='text-blue'>({promo.get('message_text')})</span>")
+    else:
+        agregar_detalle(detalles, "WARN", "MSJE", "No se encontró el texto asociado al messageName dentro de messageList")
+
+    return ok
+
+
+def validar_promocion_farma_combo_precio(detalles, promo, cantidad_excel, combo_excel, nombre_lista_excel, nombre_lista_export):
+    ok = True
+    combo_qty, combo_amount = combo_excel
+    actual_qty_cond = promo.get("condition_quantity")
+    actual_qty_applier = promo.get("applier_quantity")
+    actual_amount = promo.get("applier_amount")
+    strategy = promo.get("applier_strategy")
+
+    agregar_detalle(detalles, "INFO", "APPLIER", f"Nueva lógica FARMA_COMBO_PRECIO detectada: combo <span class='text-blue'>({combo_qty}x{formatear_monto(combo_amount)})</span>")
+
+    if promo.get("applier_type") != "FIX_AMOUNT":
+        ok = False
+        agregar_detalle(detalles, "ERR", "APPLIER", "La promo FARMA_COMBO_PRECIO debe viajar con FixAmountDiscountApplier")
+    else:
+        agregar_detalle(detalles, "OK", "APPLIER", "Tipo de applier correcto para FARMA_COMBO_PRECIO: <span class='text-blue'>(FIX_AMOUNT)</span>")
+
+    if actual_qty_cond == combo_qty:
+        agregar_detalle(detalles, "OK", "CONDICIÓN", f"Cantidad de condición correcta para FARMA_COMBO_PRECIO: <span class='text-blue'>({combo_qty})</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "CONDICIÓN", f"Cantidad de condición incorrecta para FARMA_COMBO_PRECIO. Esperado <span class='text-blue'>({combo_qty})</span> pero Export trae <span class='text-blue'>({formatear_cantidad(actual_qty_cond)})</span>")
+
+    if actual_qty_applier is not None and int(float(actual_qty_applier)) == int(combo_qty):
+        agregar_detalle(detalles, "OK", "APPLIER", f"Cantidad del applier correcta para FARMA_COMBO_PRECIO: <span class='text-blue'>({combo_qty})</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "APPLIER", f"Cantidad del applier incorrecta para FARMA_COMBO_PRECIO. Esperado <span class='text-blue'>({combo_qty})</span> pero Export trae <span class='text-blue'>({formatear_cantidad(actual_qty_applier)})</span>")
+
+    if money_iguales(combo_amount, actual_amount):
+        agregar_detalle(detalles, "OK", "APPLIER", f"Monto total del combo correcto para FARMA_COMBO_PRECIO: <span class='text-blue'>({formatear_monto(combo_amount)})</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "APPLIER", f"Monto incorrecto para FARMA_COMBO_PRECIO. Esperado <span class='text-blue'>({formatear_monto(combo_amount)})</span> pero Export trae <span class='text-blue'>({formatear_monto(actual_amount)})</span>")
+
+    if strategy == 1:
+        agregar_detalle(detalles, "OK", "APPLIER", "Strategy correcta para FARMA_COMBO_PRECIO: <span class='text-blue'>(1 - menor)</span>")
+    else:
+        ok = False
+        agregar_detalle(detalles, "ERR", "APPLIER", f"Strategy incorrecta para FARMA_COMBO_PRECIO. Esperado <span class='text-blue'>(1)</span> pero Export trae <span class='text-blue'>({strategy if strategy is not None else '-'})</span>")
+
+    if nombre_lista_excel or nombre_lista_export:
+        if nombre_lista_excel == nombre_lista_export and nombre_lista_export:
+            agregar_detalle(detalles, "OK", "LISTA PRODUCTOS", f"Lista de combo FARMA correcta: <span class='text-blue'>({nombre_lista_export})</span>")
+        else:
+            ok = False
+            agregar_detalle(detalles, "ERR", "LISTA PRODUCTOS", f"Lista de combo FARMA incorrecta. Excel <span class='text-blue'>({nombre_lista_excel or '-'})</span> vs Export <span class='text-blue'>({nombre_lista_export or '-'})</span>")
+
+    return ok
+
+
 def reconstruir_skus_desde_listas(nombres_listas, listas_productos_export):
     """
     Recibe una colección de nombres de listas y devuelve el conjunto total de SKU
@@ -742,6 +924,21 @@ def parsear_listas_productos(raw_text):
     return resultado
 
 
+def parsear_mensajes(raw_text):
+    mensajes = {}
+    patron = re.compile(r"<uy\.com\.geocom\.geopromotion\.service\.message\.Message>.*?<name>(.*?)</name>.*?<message>(.*?)</message>.*?<output>(.*?)</output>.*?</uy\.com\.geocom\.geopromotion\.service\.message\.Message>", re.DOTALL)
+    for m in patron.finditer(raw_text):
+        nombre = normalizar_texto(m.group(1))
+        if not nombre:
+            continue
+        mensajes[nombre] = {
+            "name": m.group(1).strip(),
+            "text": re.sub(r"\s+", " ", m.group(2)).strip(),
+            "output": re.sub(r"\s+", " ", m.group(3)).strip(),
+        }
+    return mensajes
+
+
 # ============================================================
 # PARSEO PROMOS DESDE EXPORT
 # ============================================================
@@ -788,12 +985,16 @@ def parsear_promos(tree, export_name=None):
             ),
             "__export_origen": export_name,
             "__xml": ET.tostring(promo, encoding="unicode"),
+            "name": get_text(promo, ".//name"),
+            "description": get_text(promo, ".//description"),
+            "area_name": get_text(head, "areaName") or "-",
             "productLists": [],
             "locales": [],
             "localLists": [],
             "skuFields": [],
             "condition_skus": [],
             "condition_quantity": None,
+            "condition_item_quantity": None,
             "condition_product_lists": [],
             "fixAmount": None,
             "percentage": None,
@@ -802,8 +1003,12 @@ def parsear_promos(tree, export_name=None):
             "applier_percentage": None,
             "applier_quantity": None,
             "applier_to_quantity": False,
+            "applier_strategy": None,
             "applier_skus": [],
             "applier_product_lists": [],
+            "message_applier_name": None,
+            "message_output": None,
+            "message_text": None,
         }
 
         for flt in promo.findall(f".//{FILTER}"):
@@ -829,6 +1034,11 @@ def parsear_promos(tree, export_name=None):
                     d["condition_quantity"] = int(float(value))
                 except Exception:
                     pass
+            elif f == "itemquantityfield":
+                try:
+                    d["condition_item_quantity"] = int(float(value))
+                except Exception:
+                    pass
 
         for ap in promo.iter():
             tag_name = clean(ap.tag)
@@ -838,6 +1048,7 @@ def parsear_promos(tree, export_name=None):
                 amount_node = ap.find("./amount")
                 qty_node = ap.find("./quantity")
                 tq_node = ap.find("./toQuantity")
+                strategy_node = ap.find("./strategy")
                 if amount_node is not None and amount_node.text:
                     d["applier_amount"] = float(amount_node.text)
                     d["fixAmount"] = int(float(amount_node.text))
@@ -845,6 +1056,11 @@ def parsear_promos(tree, export_name=None):
                     d["applier_quantity"] = float(qty_node.text)
                 if tq_node is not None and tq_node.text:
                     d["applier_to_quantity"] = tq_node.text.strip().lower() == "true"
+                if strategy_node is not None and strategy_node.text:
+                    try:
+                        d["applier_strategy"] = int(float(strategy_node.text))
+                    except Exception:
+                        pass
                 for flt in ap.findall(f".//{FILTER}"):
                     fid = get_text(flt, "fieldID")
                     val = get_text(flt, "value")
@@ -862,6 +1078,7 @@ def parsear_promos(tree, export_name=None):
                 pn = ap.find("./percentage")
                 qty_node = ap.find("./quantity")
                 tq_node = ap.find("./toQuantity")
+                strategy_node = ap.find("./strategy")
                 if pn is not None and pn.text:
                     d["applier_percentage"] = float(pn.text)
                     d["percentage"] = float(pn.text)
@@ -869,6 +1086,11 @@ def parsear_promos(tree, export_name=None):
                     d["applier_quantity"] = float(qty_node.text)
                 if tq_node is not None and tq_node.text:
                     d["applier_to_quantity"] = tq_node.text.strip().lower() == "true"
+                if strategy_node is not None and strategy_node.text:
+                    try:
+                        d["applier_strategy"] = int(float(strategy_node.text))
+                    except Exception:
+                        pass
                 for flt in ap.findall(f".//{FILTER}"):
                     fid = get_text(flt, "fieldID")
                     val = get_text(flt, "value")
@@ -886,12 +1108,18 @@ def parsear_promos(tree, export_name=None):
                 amount_node = ap.find("./amount")
                 qty_node = ap.find("./quantity")
                 tq_node = ap.find("./toQuantity")
+                strategy_node = ap.find("./strategy")
                 if amount_node is not None and amount_node.text:
                     d["applier_amount"] = float(amount_node.text)
                 if qty_node is not None and qty_node.text:
                     d["applier_quantity"] = float(qty_node.text)
                 if tq_node is not None and tq_node.text:
                     d["applier_to_quantity"] = tq_node.text.strip().lower() == "true"
+                if strategy_node is not None and strategy_node.text:
+                    try:
+                        d["applier_strategy"] = int(float(strategy_node.text))
+                    except Exception:
+                        pass
                 for flt in ap.findall(f".//{FILTER}"):
                     fid = get_text(flt, "fieldID")
                     val = get_text(flt, "value")
@@ -903,6 +1131,11 @@ def parsear_promos(tree, export_name=None):
                         d["applier_skus"].append(val_norm)
                     elif "productlist" in fid_norm:
                         d["applier_product_lists"].append(val_norm)
+
+            elif tag_name == "MessageApplier":
+                d["applier_type"] = "MESSAGE"
+                d["message_applier_name"] = get_text(ap, "messageName")
+                d["message_output"] = get_text(ap, "messageOutput")
 
         d["productLists"] = sorted(set(filter(None, d["productLists"])))
         d["locales"] = sorted(set(filter(None, d["locales"])))
@@ -921,16 +1154,25 @@ def parsear_promos(tree, export_name=None):
 def cargar_promos_desde_exports(export_dir):
     promos = []
     listas_productos_export = {}
+    mensajes_export = {}
 
     for exp in os.listdir(export_dir):
         if not exp.endswith(".txt"):
             continue
         ruta = os.path.join(export_dir, exp)
         tree, raw_text = convertir_txt_a_xml_con_root(ruta)
-        promos.extend(parsear_promos(tree, export_name=exp))
+        promos_archivo = parsear_promos(tree, export_name=exp)
+        promos.extend(promos_archivo)
         listas = parsear_listas_productos(raw_text)
         for nombre, skus in listas.items():
             listas_productos_export.setdefault(nombre, set()).update(skus)
+        mensajes_export.update(parsear_mensajes(raw_text))
+
+    for promo in promos:
+        nombre_msg = normalizar_texto(promo.get("message_applier_name"))
+        if nombre_msg and nombre_msg in mensajes_export:
+            promo["message_text"] = mensajes_export[nombre_msg].get("text")
+            promo["message_output"] = promo.get("message_output") or mensajes_export[nombre_msg].get("output")
 
     return promos, listas_productos_export
 
@@ -1111,11 +1353,82 @@ def leer_hoja_completar(path_excel):
     return None
 
 
+def leer_hoja_imput(path_excel):
+    try:
+        xls = pd.ExcelFile(path_excel)
+    except Exception:
+        return None
+
+    hoja_objetivo = None
+    for hoja in xls.sheet_names:
+        hoja_norm = normalizar_texto(hoja)
+        if hoja_norm in {"IMPUT", "INPUT"}:
+            hoja_objetivo = hoja
+            break
+
+    if not hoja_objetivo:
+        return None
+
+    try:
+        df_raw = pd.read_excel(path_excel, sheet_name=hoja_objetivo, header=None)
+    except Exception:
+        return None
+
+    if df_raw.empty:
+        return None
+
+    df_norm = df_raw.fillna("").astype(str).map(lambda x: x.replace("\n", " ").strip())
+    max_filas = min(12, len(df_norm))
+
+    for fila in range(max_filas):
+        fila_vals = {normalizar_texto(v) for v in df_norm.iloc[fila].tolist()}
+        if "AREARESPONSABLE" in fila_vals and any("GEOCOM" in v for v in fila_vals):
+            try:
+                df = pd.read_excel(path_excel, sheet_name=hoja_objetivo, header=fila)
+                df = limpiar_dataframe_columnas(df)
+                print(Fore.GREEN + f"✓ Hoja IMPUT detectada: {os.path.basename(path_excel)} (fila {fila+1})")
+                return df
+            except Exception:
+                return None
+
+    return None
+
+
+def construir_mapa_area_responsable(excel_files):
+    mapa = {}
+    for file in excel_files:
+        df_imput = leer_hoja_imput(file)
+        if df_imput is None or df_imput.empty:
+            continue
+
+        col_area = buscar_columna(df_imput, ["AREARESPONSABLE", "AREA RESPONSABLE", "AREA"])
+        col_id_geo = obtener_columna_id_geocom(df_imput)
+        col_id_fact = buscar_columna(df_imput, ["ID A FACTURAR", "ID FACTURAR", "ID A Facturar"])
+
+        if not col_area:
+            continue
+
+        for _, row in df_imput.iterrows():
+            area = normalizar_texto(row.get(col_area))
+            if not area:
+                continue
+
+            id_geo = normalizar_local(row.get(col_id_geo)) if col_id_geo else None
+            id_fact = normalizar_local(row.get(col_id_fact)) if col_id_fact else None
+
+            if id_geo:
+                mapa[id_geo] = area
+            if id_fact:
+                mapa[id_fact] = area
+
+    return mapa
+
+
 # ============================================================
 # VALIDACIÓN COMPLETAR CONTRA EXPORT
 # ============================================================
 
-def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
+def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable=None):
     detalles = []
     ok = True
 
@@ -1197,6 +1510,23 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
     applier_skus = normalizar_lista_skus(promo.get("applier_skus", []))
     applier_product_lists = [normalizar_texto(x) for x in promo.get("applier_product_lists", []) if normalizar_texto(x)]
 
+    col_area_excel = buscar_columna(grupo, ["AREARESPONSABLE", "AREA RESPONSABLE", "AREA"])
+    area_responsable = normalizar_texto(grupo[col_area_excel].iloc[0]) if col_area_excel and not es_vacio(grupo[col_area_excel].iloc[0]) else ""
+    if not area_responsable and mapa_area_responsable:
+        area_responsable = normalizar_texto(mapa_area_responsable.get(id_excel))
+        if not area_responsable and id_fact:
+            area_responsable = normalizar_texto(mapa_area_responsable.get(id_fact))
+    if not area_responsable:
+        area_responsable = normalizar_texto(promo.get("area_name"))
+
+    combo_precio_excel = extraer_mecanica_combo_precio(tipo_desc_raw)
+    es_mensaje_popup = promo.get("applier_type") == "MESSAGE"
+    es_farma_combo_precio = (
+        area_responsable == "FARMA" and
+        combo_precio_excel is not None and
+        promo.get("applier_type") == "FIX_AMOUNT"
+    )
+
     applier_pct_nodo = promo.get("applier_percentage")
     applier_pct_tecnico = (
         calcular_porcentaje_tecnico_2da(applier_pct_nodo, promo.get("applier_quantity"))
@@ -1209,6 +1539,10 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
     # --------------------------------------------------------
     nombre_lista_excel = normalizar_texto(grupo[col_lista_prod].iloc[0]) if col_lista_prod and not es_vacio(grupo[col_lista_prod].iloc[0]) else ""
     nombre_lista_export = normalizar_texto(promo["productLists"][0]) if promo.get("productLists") else ""
+
+    ok_competencia = validar_competencia_por_area(detalles, promo, area_responsable, tipo_desc, productos_excel, cantidad_excel)
+    if not ok_competencia:
+        ok = False
 
     agregar_detalle(
         detalles,
@@ -1295,6 +1629,12 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
         )
     )
 
+    if es_mensaje_popup:
+        ok_mensaje = validar_promocion_mensaje(detalles, grupo, promo, productos_excel, nombre_lista_excel, nombre_lista_export, listas_productos_export)
+        if not ok_mensaje:
+            ok = False
+        return ok, detalles
+
     # --------------------------------------------------------
     # LISTA PRODUCTOS / CONDICIÓN
     # --------------------------------------------------------
@@ -1334,6 +1674,12 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
     ok_applier = validar_applier_vs_condicion(detalles, promo, listas_productos_export)
     if not ok_applier:
         ok = False
+
+    if es_farma_combo_precio:
+        ok_combo = validar_promocion_farma_combo_precio(detalles, promo, cantidad_excel, combo_precio_excel, nombre_lista_excel, nombre_lista_export)
+        if not ok_combo:
+            ok = False
+        return ok, detalles
 
     # --------------------------------------------------------
     # REGLA PORCENTUAL
@@ -1406,9 +1752,12 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
         )
 
         esperado_pct_nodo = None
-        if esperado_pct_comercial is not None and esperado_qty not in {None, 0}:
+        if esperado_pct_comercial is not None:
             try:
-                esperado_pct_nodo = float(esperado_pct_comercial) / float(esperado_qty)
+                if area_responsable == "BYCP":
+                    esperado_pct_nodo = float(esperado_pct_comercial)
+                elif esperado_qty not in {None, 0}:
+                    esperado_pct_nodo = float(esperado_pct_comercial) / float(esperado_qty)
             except Exception:
                 esperado_pct_nodo = None
 
@@ -1484,12 +1833,20 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
                 f"vs Export <span class='text-blue'>({actual_qty_cond if actual_qty_cond is not None else '-'})</span>"
             )
 
-        if esperado_qty is not None and actual_qty_applier is not None and int(float(actual_qty_applier)) == int(esperado_qty):
+        qty_applier_ok = False
+        if esperado_qty is not None and actual_qty_applier is not None:
+            qty_applier_int = int(float(actual_qty_applier))
+            if area_responsable == "BYCP":
+                qty_applier_ok = qty_applier_int in {1, int(esperado_qty)}
+            else:
+                qty_applier_ok = qty_applier_int == int(esperado_qty)
+
+        if qty_applier_ok:
             agregar_detalle(
                 detalles,
                 "OK",
                 "APPLIER",
-                f"Cantidad del applier coincide con #UnidadesPack: "
+                f"Cantidad del applier correcta para 2da unidad: "
                 f"<span class='text-blue'>({int(float(actual_qty_applier))})</span>"
             )
         else:
@@ -1498,7 +1855,7 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
                 detalles,
                 "ERR",
                 "APPLIER",
-                f"Cantidad del applier no coincide con #UnidadesPack. "
+                f"Cantidad del applier no coincide con la regla esperada de 2da unidad. "
                 f"Excel <span class='text-blue'>({esperado_qty if esperado_qty is not None else '-'})</span> "
                 f"vs Export <span class='text-blue'>({actual_qty_applier if actual_qty_applier is not None else '-'})</span>"
             )
@@ -1508,7 +1865,17 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
     # --------------------------------------------------------
     elif tipo_desc == "PACK":
         esperado_qty = cantidad_excel
-        esperado_amount = (monto_pack_excel / cantidad_excel) if monto_pack_excel is not None and cantidad_excel not in {None, 0} else None
+        esperado_qty_applier = 1 if area_responsable == "BYCP" else cantidad_excel
+        if area_responsable == "BYCP":
+            esperado_amount = monto_pack_excel
+            regla_pack = f"Regla BYCP aplicada: no se divide descuento/monto. PVPOfertaPack esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span>"
+        else:
+            esperado_amount = (monto_pack_excel / cantidad_excel) if monto_pack_excel is not None and cantidad_excel not in {None, 0} else None
+            regla_pack = (
+                f"Regla aplicada: PVPOfertaPack <span class='text-blue'>({formatear_monto(monto_pack_excel)})</span> "
+                f"/ #UnidadesPack <span class='text-blue'>({esperado_qty if esperado_qty is not None else '-'})</span> "
+                f"= Monto unitario esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span>"
+            )
         actual_amount = promo.get("applier_amount")
         actual_qty = promo.get("condition_quantity")
         actual_qty_applier = promo.get("applier_quantity")
@@ -1517,10 +1884,7 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
             detalles,
             "INFO",
             "APPLIER",
-            f"Promo PACK detectada <span class='text-blue'>({pack_label})</span>. "
-            f"Regla aplicada: PVPOfertaPack <span class='text-blue'>({formatear_monto(monto_pack_excel)})</span> "
-            f"/ #UnidadesPack <span class='text-blue'>({esperado_qty if esperado_qty is not None else '-'})</span> "
-            f"= Monto unitario esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span>"
+            f"Promo PACK detectada <span class='text-blue'>({pack_label})</span>. {regla_pack}"
         )
 
         if mecanica_pack and cantidad_excel is not None and mecanica_pack[0] != cantidad_excel:
@@ -1576,16 +1940,16 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
                 f"vs Export <span class='text-blue'>({actual_qty if actual_qty is not None else '-'})</span>"
             )
 
-        if esperado_qty is not None and actual_qty_applier is not None and int(float(actual_qty_applier)) == int(esperado_qty):
-            agregar_detalle(detalles, "OK", "APPLIER", f"Cantidad del applier coincide con #UnidadesPack: <span class='text-blue'>({int(float(actual_qty_applier))})</span>")
+        if esperado_qty_applier is not None and actual_qty_applier is not None and int(float(actual_qty_applier)) == int(esperado_qty_applier):
+            agregar_detalle(detalles, "OK", "APPLIER", f"Cantidad del applier correcta para PACK: <span class='text-blue'>({int(float(actual_qty_applier))})</span>")
         else:
             ok = False
             agregar_detalle(
                 detalles,
                 "ERR",
                 "APPLIER",
-                f"Cantidad del applier no coincide con #UnidadesPack. "
-                f"Excel <span class='text-blue'>({esperado_qty if esperado_qty is not None else '-'})</span> "
+                f"Cantidad del applier no coincide con la regla esperada de PACK. "
+                f"Esperado <span class='text-blue'>({esperado_qty_applier if esperado_qty_applier is not None else '-'})</span> "
                 f"vs Export <span class='text-blue'>({actual_qty_applier if actual_qty_applier is not None else '-'})</span>"
             )
 
@@ -1597,8 +1961,9 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
         actual_qty = promo.get("condition_quantity")
         actual_qty_applier = promo.get("applier_quantity")
         actual_amount = promo.get("applier_amount")
+        applier_type = promo.get("applier_type")
 
-        if promo.get("applier_type") not in {"AMOUNT", "FIX_AMOUNT"}:
+        if applier_type not in {"AMOUNT", "FIX_AMOUNT"}:
             ok = False
             agregar_detalle(detalles, "ERR", "APPLIER", "La promo PACK NOMINAL debe viajar con AmountDiscountApplier o FixAmountDiscountApplier")
 
@@ -1608,23 +1973,51 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export):
             ok = False
             agregar_detalle(detalles, "ERR", "CONDICIÓN", f"Cantidad de condición no coincide con #UnidadesPack. Excel <span class='text-blue'>({esperado_qty if esperado_qty is not None else '-'})</span> vs Export <span class='text-blue'>({actual_qty if actual_qty is not None else '-'})</span>")
 
-        if esperado_qty is not None and actual_qty_applier is not None and int(float(actual_qty_applier)) == int(esperado_qty):
-            agregar_detalle(detalles, "OK", "APPLIER", f"Cantidad del applier coincide con #UnidadesPack: <span class='text-blue'>({int(float(actual_qty_applier))})</span>")
-        else:
-            ok = False
-            agregar_detalle(detalles, "ERR", "APPLIER", f"Cantidad del applier no coincide con #UnidadesPack. Excel <span class='text-blue'>({esperado_qty if esperado_qty is not None else '-'})</span> vs Export <span class='text-blue'>({actual_qty_applier if actual_qty_applier is not None else '-'})</span>")
+        esperado_qty_applier = None
+        esperado_amount = None
+        regla_pack_nom = None
 
         if descuento_nominal_pack_excel is None or cantidad_excel in {None, 0}:
             ok = False
-            agregar_detalle(detalles, "ERR", "APPLIER", "No se pudo calcular el descuento nominal unitario esperado para PACK NOMINAL")
+            agregar_detalle(detalles, "ERR", "APPLIER", "No se pudo calcular el descuento nominal esperado para PACK NOMINAL")
         else:
-            esperado_amount = descuento_nominal_pack_excel / cantidad_excel
+            if area_responsable == "BYCP":
+                if applier_type == "AMOUNT":
+                    esperado_qty_applier = 1
+                    esperado_amount = descuento_nominal_pack_excel
+                    regla_pack_nom = (
+                        f"Regla BYCP aplicada con applier AMOUNT: no se divide el descuento. "
+                        f"Descuento Nominal Pack Bruto esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span> "
+                        f"con cantidad de applier <span class='text-blue'>(1)</span>"
+                    )
+                elif applier_type == "FIX_AMOUNT":
+                    esperado_qty_applier = cantidad_excel
+                    esperado_amount = monto_pack_excel
+                    regla_pack_nom = (
+                        f"Regla BYCP aplicada con applier FIX_AMOUNT: se valida precio oferta pack. "
+                        f"PVPOfertaPack esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span> "
+                        f"con cantidad de applier <span class='text-blue'>({cantidad_excel})</span>"
+                    )
+                else:
+                    esperado_qty_applier = None
+                    esperado_amount = None
+                    regla_pack_nom = ""
+            else:
+                esperado_qty_applier = cantidad_excel
+                esperado_amount = descuento_nominal_pack_excel / cantidad_excel
+                regla_pack_nom = f"Regla aplicada: Descuento Nominal Pack Bruto <span class='text-blue'>({formatear_monto(descuento_nominal_pack_excel)})</span> / #UnidadesPack <span class='text-blue'>({cantidad_excel})</span> = Descuento unitario esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span>"
+
+            if esperado_qty_applier is not None and actual_qty_applier is not None and int(float(actual_qty_applier)) == int(esperado_qty_applier):
+                agregar_detalle(detalles, "OK", "APPLIER", f"Cantidad del applier correcta para PACK NOMINAL: <span class='text-blue'>({int(float(actual_qty_applier))})</span>")
+            else:
+                ok = False
+                agregar_detalle(detalles, "ERR", "APPLIER", f"Cantidad del applier no coincide con la regla esperada de PACK NOMINAL. Esperado <span class='text-blue'>({esperado_qty_applier if esperado_qty_applier is not None else '-'})</span> vs Export <span class='text-blue'>({actual_qty_applier if actual_qty_applier is not None else '-'})</span>")
 
             agregar_detalle(
                 detalles,
                 "INFO",
                 "APPLIER",
-                f"Promo PACK NOMINAL detectada. Regla aplicada: Descuento Nominal Pack Bruto <span class='text-blue'>({formatear_monto(descuento_nominal_pack_excel)})</span> / #UnidadesPack <span class='text-blue'>({cantidad_excel})</span> = Descuento unitario esperado <span class='text-blue'>({formatear_monto(esperado_amount)})</span>"
+                f"Promo PACK NOMINAL detectada. {regla_pack_nom}"
             )
 
             if money_iguales(esperado_amount, actual_amount):
@@ -1863,6 +2256,7 @@ def main():
     ]
 
     promos, listas_productos_export = cargar_promos_desde_exports(EXPORT_PATH)
+    mapa_area_responsable = construir_mapa_area_responsable(excel_files)
 
     df_usuario, df_codigos_total, rc, archivos_tradicional = ejecutar_flujo_tradicional(excel_files)
 
@@ -1971,8 +2365,9 @@ def main():
                 print("-" * 55)
                 continue
 
-            ok, detalles = validar_promocion_completar(id_geo, grupo, promo, listas_productos_export)
-            print((Fore.GREEN if ok else Fore.RED) + f"{normalizar_local(id_geo)} | {promo['id']} | {'Coinciden' if ok else 'No coinciden'}")
+            ok, detalles = validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable)
+            etiqueta_tipo = " | Tipo: MSJE" if promo.get("applier_type") == "MESSAGE" else ""
+            print((Fore.GREEN if ok else Fore.RED) + f"{normalizar_local(id_geo)} | {promo['id']} | {'Coinciden' if ok else 'No coinciden'}{etiqueta_tipo}")
             for tipo, msg in detalles:
                 color = Fore.GREEN if tipo == "OK" else (Fore.YELLOW if tipo in {"WARN", "INFO"} else Fore.RED)
                 pref = "+" if tipo == "OK" else ("!" if tipo in {"WARN", "INFO"} else "-")
