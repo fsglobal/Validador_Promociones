@@ -681,6 +681,36 @@ def obtener_valor_descuento_bruto_q(grupo):
     return None
 
 
+def extraer_id_msje_asociado_desde_grupo(grupo):
+    col_lista_locales = buscar_columna(grupo, [
+        "ID LISTA LOCALES",
+        "ID Lista Locales",
+        "ID LISTA LOCAL",
+        "ID Lista Local",
+        "AJ"
+    ])
+    if not col_lista_locales:
+        return None
+
+    valor = grupo[col_lista_locales].iloc[0]
+    return normalizar_local(valor) if es_id_promocion_valido(valor) else None
+
+
+def obtener_promo_msje_asociada(grupo, promos_por_id):
+    id_msje = extraer_id_msje_asociado_desde_grupo(grupo)
+    if not id_msje:
+        return None, None
+
+    promo_msje = promos_por_id.get(id_msje) if promos_por_id else None
+    if not promo_msje:
+        return id_msje, None
+
+    if promo_msje.get("applier_type") == "MESSAGE":
+        return id_msje, promo_msje
+
+    return id_msje, None
+
+
 # ============================================================
 # VALIDACIÓN APPLIER VS CONDICIÓN
 # ============================================================
@@ -1428,7 +1458,7 @@ def construir_mapa_area_responsable(excel_files):
 # VALIDACIÓN COMPLETAR CONTRA EXPORT
 # ============================================================
 
-def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable=None):
+def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable=None, promos_por_id=None):
     detalles = []
     ok = True
 
@@ -1634,6 +1664,42 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
         if not ok_mensaje:
             ok = False
         return ok, detalles
+
+    id_msje_asociado, promo_msje_asociada = obtener_promo_msje_asociada(grupo, promos_por_id)
+    if id_msje_asociado:
+        agregar_detalle(
+            detalles,
+            "INFO",
+            "MSJE",
+            f"AJ / ID Lista Locales trae valor numérico <span class='text-blue'>({id_msje_asociado})</span>. Se evalúa como posible MSJE asociado"
+        )
+
+        if promo_msje_asociada:
+            agregar_detalle(
+                detalles,
+                "OK",
+                "MSJE",
+                f"Se detectó promo MSJE asociada en Export con ID <span class='text-blue'>({id_msje_asociado})</span>"
+            )
+            ok_msje_asociado = validar_promocion_mensaje(
+                detalles,
+                grupo,
+                promo_msje_asociada,
+                productos_excel,
+                nombre_lista_excel,
+                normalizar_texto(promo_msje_asociada["productLists"][0]) if promo_msje_asociada.get("productLists") else "",
+                listas_productos_export,
+            )
+            if not ok_msje_asociado:
+                ok = False
+        else:
+            ok = False
+            agregar_detalle(
+                detalles,
+                "ERR",
+                "MSJE",
+                f"AJ / ID Lista Locales <span class='text-blue'>({id_msje_asociado})</span> no corresponde a una promo MessageApplier válida en Export"
+            )
 
     # --------------------------------------------------------
     # LISTA PRODUCTOS / CONDICIÓN
@@ -2256,6 +2322,7 @@ def main():
     ]
 
     promos, listas_productos_export = cargar_promos_desde_exports(EXPORT_PATH)
+    promos_por_id = {normalizar_local(p.get("id")): p for p in promos if es_id_promocion_valido(p.get("id"))}
     mapa_area_responsable = construir_mapa_area_responsable(excel_files)
 
     df_usuario, df_codigos_total, rc, archivos_tradicional = ejecutar_flujo_tradicional(excel_files)
@@ -2365,7 +2432,7 @@ def main():
                 print("-" * 55)
                 continue
 
-            ok, detalles = validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable)
+            ok, detalles = validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable, promos_por_id)
             etiqueta_tipo = " | Tipo: MSJE" if promo.get("applier_type") == "MESSAGE" else ""
             print((Fore.GREEN if ok else Fore.RED) + f"{normalizar_local(id_geo)} | {promo['id']} | {'Coinciden' if ok else 'No coinciden'}{etiqueta_tipo}")
             for tipo, msg in detalles:
