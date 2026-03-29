@@ -702,13 +702,35 @@ def obtener_promo_msje_asociada(grupo, promos_por_id):
         return None, None
 
     promo_msje = promos_por_id.get(id_msje) if promos_por_id else None
-    if not promo_msje:
-        return id_msje, None
+    return id_msje, promo_msje
 
-    if promo_msje.get("applier_type") == "MESSAGE":
-        return id_msje, promo_msje
 
-    return id_msje, None
+def _formatear_fecha_msje(fecha):
+    fecha_limpia = limpiar_fecha(fecha)
+    if not fecha_limpia:
+        return ""
+    try:
+        return pd.to_datetime(fecha_limpia).strftime("%d-%m-%Y")
+    except Exception:
+        return fecha_limpia
+
+
+def construir_msje_popup_data(id_padre, id_msje_asociado=None, promo_msje_asociada=None,
+                              productos_excel=None, nombre_lista_excel=""):
+    return {
+        "hay": bool(id_msje_asociado),
+        "id_msje": normalizar_local(id_msje_asociado) if id_msje_asociado else "",
+        "id_padre": normalizar_local(id_padre) if id_padre else "",
+        "mensaje": promo_msje_asociada.get("message_applier_name", "") if promo_msje_asociada else "",
+        "salida": promo_msje_asociada.get("message_output", "") if promo_msje_asociada else "",
+        "texto": promo_msje_asociada.get("message_text", "") if promo_msje_asociada else "",
+        "resumen": f"ID MSJE - {normalizar_local(id_msje_asociado)}" if id_msje_asociado else "No hay",
+        "resumen_condicion": "-",
+        "nombre_lista_excel": nombre_lista_excel or "",
+        "nombre_lista_export": normalizar_texto(promo_msje_asociada["productLists"][0]) if promo_msje_asociada and promo_msje_asociada.get("productLists") else "",
+        "fecha_inicio": _formatear_fecha_msje(promo_msje_asociada.get("startDate")) if promo_msje_asociada else "",
+        "fecha_fin": _formatear_fecha_msje(promo_msje_asociada.get("endDate")) if promo_msje_asociada else "",
+    }
 
 
 # ============================================================
@@ -1458,11 +1480,12 @@ def construir_mapa_area_responsable(excel_files):
 # VALIDACIÓN COMPLETAR CONTRA EXPORT
 # ============================================================
 
-def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable=None, promos_por_id=None):
+def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, mapa_area_responsable=None, promos_por_id=None, retornar_msje_data=False):
     detalles = []
     ok = True
 
     id_excel = normalizar_local(id_geo)
+    msje_popup_data = construir_msje_popup_data(id_excel)
     id_export = normalizar_local(promo["id"])
 
     if id_excel != id_export:
@@ -1569,6 +1592,7 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
     # --------------------------------------------------------
     nombre_lista_excel = normalizar_texto(grupo[col_lista_prod].iloc[0]) if col_lista_prod and not es_vacio(grupo[col_lista_prod].iloc[0]) else ""
     nombre_lista_export = normalizar_texto(promo["productLists"][0]) if promo.get("productLists") else ""
+    msje_popup_data["nombre_lista_excel"] = nombre_lista_excel
 
     ok_competencia = validar_competencia_por_area(detalles, promo, area_responsable, tipo_desc, productos_excel, cantidad_excel)
     if not ok_competencia:
@@ -1663,34 +1687,16 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
         ok_mensaje = validar_promocion_mensaje(detalles, grupo, promo, productos_excel, nombre_lista_excel, nombre_lista_export, listas_productos_export)
         if not ok_mensaje:
             ok = False
-        return ok, detalles
+        return (ok, detalles, msje_popup_data) if retornar_msje_data else (ok, detalles)
 
     id_msje_asociado, promo_msje_asociada = obtener_promo_msje_asociada(grupo, promos_por_id)
-    if id_msje_asociado and promo_msje_asociada:
-        agregar_detalle(
-            detalles,
-            "OK",
-            "MSJE",
-            f"ID Lista Locales <span class='text-blue'>({id_msje_asociado})</span> corresponde a MSJE / POPUP asociado a promoción <span class='text-blue'>({id_excel})</span>"
-        )
-        ok_msje_asociado = validar_promocion_mensaje(
-            detalles,
-            grupo,
-            promo_msje_asociada,
-            productos_excel,
-            nombre_lista_excel,
-            normalizar_texto(promo_msje_asociada["productLists"][0]) if promo_msje_asociada.get("productLists") else "",
-            listas_productos_export,
-        )
-        if not ok_msje_asociado:
-            ok = False
-    else:
-        agregar_detalle(
-            detalles,
-            "INFO",
-            "MSJE",
-            "MSJE / POPUP: <span class='text-blue'>(No hay)</span>"
-        )
+    msje_popup_data = construir_msje_popup_data(
+        id_excel,
+        id_msje_asociado=id_msje_asociado,
+        promo_msje_asociada=promo_msje_asociada,
+        productos_excel=productos_excel,
+        nombre_lista_excel=nombre_lista_excel,
+    )
 
     # --------------------------------------------------------
     # LISTA PRODUCTOS / CONDICIÓN
@@ -1736,7 +1742,7 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
         ok_combo = validar_promocion_farma_combo_precio(detalles, promo, cantidad_excel, combo_precio_excel, nombre_lista_excel, nombre_lista_export)
         if not ok_combo:
             ok = False
-        return ok, detalles
+        return (ok, detalles, msje_popup_data) if retornar_msje_data else (ok, detalles)
 
     # --------------------------------------------------------
     # REGLA PORCENTUAL
@@ -2181,7 +2187,7 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
     else:
         agregar_detalle(detalles, "WARN", "TIPO", f"Tipo de descuento <span class='text-blue'>({tipo_desc_raw})</span> no tiene regla específica nueva. Se conserva validación general")
 
-    return ok, detalles
+    return (ok, detalles, msje_popup_data) if retornar_msje_data else (ok, detalles)
 
 
 # ============================================================
