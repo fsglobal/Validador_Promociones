@@ -552,11 +552,11 @@ def serializar_resultados(resultados):
 # RUTA PRINCIPAL
 # ============================================================
 @app.route("/")
+@app.route("/validPromotion/")
 def inicio():
     excel, export = listar_archivos()
     return render_template("index.html", excel_files=excel, export_files=export)
 
-@app.route("/validPromotion/")
 def valid_promotion():
     return inicio()
 
