@@ -21,6 +21,15 @@ LOG_PATH = os.path.join(BASE_PATH, "logs")
 os.makedirs(LOG_PATH, exist_ok=True)
 os.makedirs(EXCEL_PATH, exist_ok=True)
 os.makedirs(EXPORT_PATH, exist_ok=True)
+# Limpieza automática al iniciar el servidor
+for carpeta in [EXCEL_PATH, EXPORT_PATH]:
+    try:
+        for archivo in os.listdir(carpeta):
+            ruta = os.path.join(carpeta, archivo)
+            if os.path.isfile(ruta):
+                os.remove(ruta)
+    except Exception:
+        pass
 
 if MODULOS_PATH not in sys.path:
     sys.path.append(MODULOS_PATH)
