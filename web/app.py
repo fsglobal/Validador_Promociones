@@ -785,7 +785,12 @@ def inicio():
     excel, export = listar_archivos()
     return render_template("index.html", excel_files=excel, export_files=export)
 
-
+# ============================================================
+# CONSULTOR DE CARGA
+# ============================================================
+@app.route("/consultor")
+def consultor():
+    return render_template("consultor_ui.html")
 
 # ============================================================
 # SUBIR ARCHIVOS
