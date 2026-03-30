@@ -826,59 +826,8 @@
         <form action="/descargar_resultados" method="POST">
             <input type="hidden" name="rc" value="{{ rc }}">
 
-            <textarea name="tradicional_data" style="display:none;">
-{% for r in resultados_tradicional %}
-ID GEO: {{ r.id_geo }}
-Excel: {{ r.excel_origen | default('-') }}
-Export: {{ r.export_origen | default('-') }}
-Usuario creador: {{ r.promo_info.creationUser | default('-') }}
-Área responsable: {{ r.promo_info.__area_responsable | default(r.promo_info.area_responsable | default('-')) }}
-Habilitada: {{ 'Sí' if r.promo_info.enabled else 'No' }}
-Tipo competencia: {{ r.promo_info.__tipo_competencia | default('-') }}
-Tipo descuento: {{ r.promo_info.__tipo_descuento | default('-') }}
-Resultado: {{ r.mensaje }}
-Aviso: {{ r.aviso_principal | default('-') }}
-Estado ID: {{ r.estado_id | default('-') }}
-Estado Facturar: {{ r.estado_facturar | default('-') }}
-Estado Fechas: {{ r.estado_fechas | default('-') }}
-Estado Condición: {{ r.estado_condicion | default('-') }}
-Estado Aplicador: {{ r.estado_applier | default('-') }}
-Tipo limpio: {{ r.tipo_promocion | default('-') }}
-Condición limpia: {{ r.resumen_condicion | default('-') }}
-Aplicador limpio: {{ r.resumen_aplicador | default('-') }}
-{% for d in r.detalle %}
- - {{ d.tipo }}: {{ d.msg | safe }}
-{% endfor %}
------------------------------------------
-{% endfor %}
-            </textarea>
-
-            <textarea name="completar_data" style="display:none;">
-{% for r in resultados_completar %}
-ID GEO: {{ r.id_geo }}
-Excel: {{ r.excel_origen | default('-') }}
-Export: {{ r.export_origen | default('-') }}
-Usuario creador: {{ r.promo_info.creationUser | default('-') }}
-Área responsable: {{ r.promo_info.__area_responsable | default(r.promo_info.area_responsable | default('-')) }}
-Habilitada: {{ 'Sí' if r.promo_info.enabled else 'No' }}
-Tipo competencia: {{ r.promo_info.__tipo_competencia | default('-') }}
-Tipo descuento: {{ r.promo_info.__tipo_descuento | default('-') }}
-Resultado: {{ r.mensaje }}
-Aviso: {{ r.aviso_principal | default('-') }}
-Estado ID: {{ r.estado_id | default('-') }}
-Estado Facturar: {{ r.estado_facturar | default('-') }}
-Estado Fechas: {{ r.estado_fechas | default('-') }}
-Estado Condición: {{ r.estado_condicion | default('-') }}
-Estado Aplicador: {{ r.estado_applier | default('-') }}
-Tipo limpio: {{ r.tipo_promocion | default('-') }}
-Condición limpia: {{ r.resumen_condicion | default('-') }}
-Aplicador limpio: {{ r.resumen_aplicador | default('-') }}
-{% for d in r.detalle %}
- - {{ d.tipo }}: {{ d.msg | safe }}
-{% endfor %}
------------------------------------------
-{% endfor %}
-            </textarea>
+            <input type="hidden" name="tradicional_data" value='{{ tradicional_data | tojson | safe }}'>
+            <input type="hidden" name="completar_data" value='{{ completar_data | tojson | safe }}'>
 
             <button type="submit" class="btn btn-primary btn-sm btn-glow me-2">Descargar resultados</button>
 
