@@ -3,11 +3,14 @@ import re
 import sys
 import json
 from datetime import datetime
-from io import StringIO
+from io import StringIO, BytesIO
 import xml.etree.ElementTree as ET
 
 import pandas as pd
 from flask import Flask, render_template, request, jsonify, send_file
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
 
 # ============================================================
 # RUTAS BASE Y CONFIGURACIÓN INICIAL
@@ -79,6 +82,12 @@ app = Flask(
 app.secret_key = "ClaveUltraSecretaParaMensajesWeb"
 registrar_rutas_gestor(app)
 registrar_rutas_repositorio(app)
+
+ULTIMO_REPORTE_DESCARGA = {
+    "rc": "",
+    "tradicional": [],
+    "completar": [],
+}
 
 # ============================================================
 # LOGGING
@@ -539,7 +548,226 @@ def construir_resultado_web(id_geo, excel_origen, export_origen, promo_info, det
     }
 
 
+
+
+def _copiar_resultados_para_descarga(resultados):
+    limpios = []
+    for r in resultados:
+        copia = dict(r)
+        copia["promo_info"] = dict(copia.get("promo_info") or {})
+        copia["detalle"] = list(copia.get("detalle") or [])
+        limpios.append(copia)
+    return limpios
+
+
+def _estado_reporte_descarga(resultado):
+    mensaje = str(resultado.get("mensaje") or "").strip()
+    aviso = str(resultado.get("aviso_principal") or "").strip()
+    if mensaje == "Coinciden" and aviso:
+        return "ATENCION"
+    if mensaje == "Coinciden":
+        return "OK"
+    return "ERROR"
+
+
+def _valor_si_no(valor):
+    return "Sí" if bool(valor) else "No"
+
+
+def _texto_competencia_prolijo(valor):
+    txt = str(valor or "-").strip()
+    if not txt or txt == "-":
+        return "-"
+    txt = txt.replace("Comp. X Producto", "Comp. Por Producto")
+    txt = txt.replace("Comp. X Promoción", "Comp. Por Promoción")
+    txt = txt.replace("Comp. X Promocion", "Comp. Por Promoción")
+    txt = txt.replace("Comp. X Unidades", "Comp. Por Unidades")
+    return txt
+
+
+def _extraer_productos_y_detalle(texto):
+    base = str(texto or "-").strip()
+    if not base or base == "-":
+        return "-", "-"
+
+    partes = [p.strip() for p in base.split("|") if p.strip()]
+    if not partes:
+        return "-", "-"
+
+    producto = "-"
+    detalle = []
+
+    for parte in partes:
+        lower = parte.lower()
+        if lower.startswith("sku:") or lower.startswith("lista:"):
+            if producto == "-":
+                producto = parte
+            else:
+                detalle.append(parte)
+        else:
+            detalle.append(parte)
+
+    detalle_txt = " | ".join(detalle) if detalle else "-"
+    return producto, detalle_txt
+
+
+def _observacion_reporte(resultado):
+    estado = _estado_reporte_descarga(resultado)
+    aviso = str(resultado.get("aviso_principal") or "").strip()
+    if estado == "OK":
+        return "-"
+    if aviso:
+        return aviso
+
+    detalle = resultado.get("detalle") or []
+    preferidos = []
+    for d in detalle:
+        tipo = str((d or {}).get("tipo") or "").strip().upper()
+        msg = _strip_html((d or {}).get("msg", ""))
+        if not msg:
+            continue
+        if tipo == "ERR":
+            preferidos.append(msg)
+    if preferidos:
+        return preferidos[0]
+
+    for d in detalle:
+        tipo = str((d or {}).get("tipo") or "").strip().upper()
+        msg = _strip_html((d or {}).get("msg", ""))
+        if tipo == "WARN" and msg:
+            return msg
+
+    return "-"
+
+
+def _fila_reporte_xlsx(resultado):
+    promo_info = resultado.get("promo_info") or {}
+    productos_condicion, detalle_condicion = _extraer_productos_y_detalle(resultado.get("resumen_condicion", "-"))
+    productos_aplicador, detalle_aplicador = _extraer_productos_y_detalle(resultado.get("resumen_aplicador", "-"))
+
+    fecha_inicio = str(promo_info.get("startDate") or promo_info.get("__start_date") or "-").strip() or "-"
+    fecha_fin = str(promo_info.get("endDate") or promo_info.get("__end_date") or "-").strip() or "-"
+
+    return [
+        _estado_reporte_descarga(resultado),
+        _observacion_reporte(resultado),
+        resultado.get("id_geo", "-"),
+        fecha_inicio,
+        fecha_fin,
+        resultado.get("tipo_promocion", "-"),
+        promo_info.get("__area_responsable", promo_info.get("area_responsable", "-")),
+        _texto_competencia_prolijo(promo_info.get("__tipo_competencia", "-")),
+        productos_condicion,
+        detalle_condicion,
+        productos_aplicador,
+        detalle_aplicador,
+        promo_info.get("creationUser", "-"),
+        resultado.get("excel_origen", "-"),
+        resultado.get("export_origen", "-"),
+    ]
+
+
+def _armar_xlsx_resultados(rc, resultados_tradicional, resultados_completar):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Reporte"
+
+    headers = [
+        "Estado",
+        "Observaciones",
+        "ID GEO",
+        "Fecha inicio",
+        "Fecha fin",
+        "Tipo descuento",
+        "Área responsable",
+        "Tipo competencia",
+        "Productos condición",
+        "Detalle condición",
+        "Productos aplicador",
+        "Detalle aplicador",
+        "Usuario creador",
+        "Excel",
+        "Export",
+    ]
+
+    title_fill = PatternFill("solid", fgColor="1F4F82")
+    title_font = Font(color="FFFFFF", bold=True)
+    header_fill = PatternFill("solid", fgColor="DCE6F1")
+    header_font = Font(bold=True, color="1F1F1F")
+    thin_gray = Side(style="thin", color="D9E0E7")
+    border = Border(left=thin_gray, right=thin_gray, top=thin_gray, bottom=thin_gray)
+
+    ws.merge_cells("A1:O1")
+    ws["A1"] = "REPORTE DE VALIDACIÓN DE PROMOCIONES"
+    ws["A1"].fill = title_fill
+    ws["A1"].font = title_font
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 24
+
+    ws["A2"] = "Fecha validación"
+    ws["B2"] = datetime.now().strftime("%d-%m-%Y")
+    ws["D2"] = "Usuario filtrado"
+    ws["E2"] = rc or "-"
+
+    for cell in ("A2", "D2"):
+        ws[cell].font = Font(bold=True, color="44515E")
+
+    header_row = 4
+    for col_idx, header in enumerate(headers, start=1):
+        cell = ws.cell(row=header_row, column=col_idx, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = border
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    data_rows = []
+    for r in resultados_tradicional:
+        data_rows.append(_fila_reporte_xlsx(r))
+    for r in resultados_completar:
+        data_rows.append(_fila_reporte_xlsx(r))
+
+    start_row = header_row + 1
+    for row_idx, row_data in enumerate(data_rows, start=start_row):
+        for col_idx, value in enumerate(row_data, start=1):
+            cell = ws.cell(row=row_idx, column=col_idx, value=value)
+            cell.border = border
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        estado = str(row_data[0])
+        estado_cell = ws.cell(row=row_idx, column=1)
+        estado_cell.font = Font(bold=True)
+        if estado == "OK":
+            estado_cell.fill = PatternFill("solid", fgColor="DCEFE5")
+            estado_cell.font = Font(bold=True, color="115C39")
+        elif estado == "ATENCION":
+            estado_cell.fill = PatternFill("solid", fgColor="FFF2C9")
+            estado_cell.font = Font(bold=True, color="7A5B00")
+        else:
+            estado_cell.fill = PatternFill("solid", fgColor="F7D9DC")
+            estado_cell.font = Font(bold=True, color="8D2430")
+
+    widths = {
+        "A": 12, "B": 42, "C": 12, "D": 14, "E": 14,
+        "F": 22, "G": 20, "H": 22, "I": 30, "J": 34,
+        "K": 30, "L": 34, "M": 18, "N": 38, "O": 26,
+    }
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+
+    ws.freeze_panes = "A5"
+    ws.auto_filter.ref = f"A4:O{max(4, ws.max_row)}"
+    ws.sheet_view.showGridLines = False
+
+    for row in range(5, ws.max_row + 1):
+        ws.row_dimensions[row].height = 34
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output
+
+
 def serializar_resultados(resultados):
+
     limpios = []
     for r in resultados:
         copia = dict(r)
@@ -557,8 +785,6 @@ def inicio():
     excel, export = listar_archivos()
     return render_template("index.html", excel_files=excel, export_files=export)
 
-def valid_promotion():
-    return inicio()
 
 
 # ============================================================
@@ -662,6 +888,8 @@ def construir_indices_export(export_files):
                 "__area_responsable": promo_dict.get("area_name", "-"),
                 "__export_origen": promo_dict.get("__export_origen", export_name),
                 "__tipo_descuento": "-",
+                "startDate": promo_dict.get("startDate", "-"),
+                "endDate": promo_dict.get("endDate", "-"),
             }
             if pid not in promos_por_id:
                 promos_por_id[pid] = promo_dict
@@ -807,6 +1035,13 @@ def procesar():
     total_warn = sum(1 for r in todos_los_resultados if r.get("aviso_principal"))
     total_err = sum(1 for r in todos_los_resultados if r.get("mensaje") != "Coinciden")
 
+    global ULTIMO_REPORTE_DESCARGA
+    ULTIMO_REPORTE_DESCARGA = {
+        "rc": rc_web,
+        "tradicional": _copiar_resultados_para_descarga(resultados_tradicional),
+        "completar": _copiar_resultados_para_descarga(resultados_completar),
+    }
+
     return render_template(
         "resultado.html",
         rc=rc_web,
@@ -826,45 +1061,35 @@ def procesar():
 # ============================================================
 @app.route("/descargar_resultados", methods=["POST"])
 def descargar_resultados():
-    fecha_archivo = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    buffer = StringIO()
-    buffer.write("========================================\n")
-    buffer.write("VALIDACIÓN DE PROMOCIONES\n")
-    buffer.write("========================================\n\n")
-    buffer.write(f"Fecha validación: {datetime.now().strftime('%d-%m-%Y %H:%M:%S')}\n")
-    buffer.write(f"Usuario creador: {request.form.get('rc', '').strip() or '-'}\n\n")
+    global ULTIMO_REPORTE_DESCARGA
 
-    for titulo, key in (("TRADICIONAL", "tradicional_data"), ("COMPLETAR", "completar_data")):
-        buffer.write(f"=== {titulo} ===\n\n")
-        try:
-            resultados = json.loads(request.form.get(key, "[]"))
-        except Exception:
-            resultados = []
-        if not resultados:
-            buffer.write("Sin promociones en esta sección.\n\n")
-            continue
-        for r in resultados:
-            buffer.write(f"ID GEO: {r.get('id_geo', '-')}\n")
-            buffer.write(f"Excel: {r.get('excel_origen', '-')}\n")
-            buffer.write(f"Export: {r.get('export_origen', '-')}\n")
-            buffer.write(f"Usuario creador: {(r.get('promo_info') or {}).get('creationUser', '-')}\n")
-            buffer.write(f"Área responsable: {(r.get('promo_info') or {}).get('__area_responsable', '-')}\n")
-            buffer.write(f"Tipo descuento: {r.get('tipo_promocion', '-')}\n")
-            if r.get('es_msje_popup'):
-                buffer.write(f"Promo padre: {r.get('id_padre', '-')}\n")
-            buffer.write(f"Resultado: {r.get('mensaje', '-')}\n")
-            if r.get('aviso_principal'):
-                buffer.write(f"Aviso: {r.get('aviso_principal')}\n")
-            buffer.write(f"Condición limpia: {r.get('resumen_condicion', '-')}\n")
-            buffer.write(f"Aplicador limpio: {r.get('resumen_aplicador', '-')}\n")
-            for d in r.get('detalle', []):
-                buffer.write(f"- {_strip_html(d.get('msg', ''))}\n")
-            buffer.write("\n-----------------------------------------\n\n")
+    rc = (ULTIMO_REPORTE_DESCARGA or {}).get("rc", "")
+    resultados_tradicional = list((ULTIMO_REPORTE_DESCARGA or {}).get("tradicional", []))
+    resultados_completar = list((ULTIMO_REPORTE_DESCARGA or {}).get("completar", []))
 
-    ruta = os.path.join(LOG_PATH, f"resultado_validacion_{fecha_archivo}.txt")
-    with open(ruta, "w", encoding="utf-8") as f:
-        f.write(buffer.getvalue())
-    return send_file(ruta, as_attachment=True, download_name=os.path.basename(ruta))
+    if not resultados_tradicional and not resultados_completar:
+        salida = BytesIO()
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Reporte"
+        ws["A1"] = "No hay resultados disponibles para descargar."
+        ws["A2"] = "Primero ejecuta una validación."
+        wb.save(salida)
+        salida.seek(0)
+        return send_file(
+            salida,
+            as_attachment=True,
+            download_name=f"resultado_validacion_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx",
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    salida = _armar_xlsx_resultados(rc, resultados_tradicional, resultados_completar)
+    return send_file(
+        salida,
+        as_attachment=True,
+        download_name=f"resultado_validacion_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 if __name__ == "__main__":
