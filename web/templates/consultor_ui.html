@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultor de Carga</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-page: #eceff3;
+            --bg-card: #f7f8fa;
+            --bg-soft: #eef1f4;
+            --text-main: #2f3a45;
+            --text-muted: #66727f;
+            --title-main: #1f4f82;
+            --border-soft: #d9e0e7;
+            --shadow-soft: 0 6px 18px rgba(31, 41, 55, 0.08);
+            --shadow-hover: 0 10px 22px rgba(31, 41, 55, 0.12);
+            --ok-bg: #dcefe5;
+            --ok-text: #115c39;
+            --warn-bg: #fff2c9;
+            --warn-text: #7a5b00;
+            --primary-btn-1: #1f5f99;
+            --primary-btn-2: #2f7bbb;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background: var(--bg-page);
+            margin: 0;
+            padding: 0;
+            color: var(--text-main);
+            font-size: 0.95rem;
+        }
+
+        @keyframes fadeInSoft {
+            0% { opacity: 0; transform: translateY(18px) scale(0.985); }
+            60% { opacity: 1; transform: translateY(-2px) scale(1.005); }
+            100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .contenedor {
+            max-width: 1280px;
+            margin: 28px auto;
+            padding: 0 20px 28px;
+        }
+
+        .titulo {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 4px;
+            color: var(--title-main);
+        }
+
+        .subtitulo {
+            color: var(--text-muted);
+            margin-bottom: 26px;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .consultor-grid {
+            display: grid;
+            grid-template-columns: 1fr 0.92fr;
+            gap: 24px;
+            align-items: start;
+        }
+
+        .consultor-bottom {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-top: 24px;
+            align-items: start;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            box-shadow: var(--shadow-soft);
+            border: 1px solid var(--border-soft);
+            padding: 18px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            opacity: 0;
+            animation: fadeInSoft 0.55s forwards;
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-hover);
+        }
+
+        .card-accent {
+            border-left: 5px solid #198754;
+        }
+
+        .card-header {
+            font-weight: 700;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--title-main);
+            font-size: 1rem;
+        }
+
+        .card p {
+            color: #43515e;
+            line-height: 1.45;
+            margin-top: 0;
+            margin-bottom: 14px;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .field.full {
+            grid-column: 1 / -1;
+        }
+
+        .field.hidden {
+            display: none;
+        }
+
+        .field label {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select,
+        textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #cfd7df;
+            border-radius: 10px;
+            font-size: 14px;
+            box-sizing: border-box;
+            background: #f9fafb;
+            color: var(--text-main);
+            font-family: 'Roboto', sans-serif;
+        }
+
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus,
+        textarea:focus {
+            outline: none;
+            border-color: #7fb0df;
+            box-shadow: 0 0 0 0.18rem rgba(127, 176, 223, 0.18);
+            background: #fcfcfd;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 110px;
+        }
+
+        .help {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 18px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            font-size: 14px;
+            transition: transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
+        }
+
+        .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 16px rgba(31, 41, 55, 0.14);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-btn-1), var(--primary-btn-2));
+            color: #fff;
+            border: none;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #1c568d, #2a71ad);
+        }
+
+        .btn-secondary {
+            background: #79848f;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background: #68737d;
+        }
+
+        .actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 18px;
+        }
+
+        .soft-box {
+            margin-top: 16px;
+            background: var(--bg-soft);
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid var(--border-soft);
+            color: #44515e;
+            line-height: 1.45;
+            font-size: 0.92rem;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 700;
+            margin-bottom: 14px;
+            background: #e8eef5;
+            color: var(--title-main);
+        }
+
+        .status.ok {
+            background: var(--ok-bg);
+            color: var(--ok-text);
+        }
+
+        .status.warning {
+            background: var(--warn-bg);
+            color: var(--warn-text);
+        }
+
+        .guide-compact {
+            background: var(--bg-soft);
+            border: 1px solid var(--border-soft);
+            border-radius: 10px;
+            padding: 14px;
+        }
+
+        .mini-section {
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #dde4eb;
+        }
+
+        .mini-section:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+
+        .mini-section h3 {
+            margin: 0 0 8px;
+            font-size: 0.98rem;
+            color: var(--title-main);
+        }
+
+        .mini-lines {
+            display: grid;
+            gap: 6px;
+        }
+
+        .mini-line {
+            display: grid;
+            grid-template-columns: 135px 1fr;
+            gap: 10px;
+            padding: 7px 9px;
+            border-radius: 9px;
+            background: #f9fafb;
+            border: 1px solid #dfe5eb;
+        }
+
+        .mini-key {
+            font-weight: 700;
+            color: #44515e;
+            font-size: 12px;
+        }
+
+        .mini-val {
+            color: var(--text-main);
+            font-size: 13px;
+            line-height: 1.4;
+        }
+
+        .compact-note {
+            padding: 8px 10px;
+            border-radius: 9px;
+            background: #f9fafb;
+            border: 1px solid #dfe5eb;
+            color: #44515e;
+            line-height: 1.4;
+            font-size: 13px;
+        }
+
+        .checklist-box,
+        .reminder-box {
+            margin-top: 16px;
+            background: var(--bg-soft);
+            border: 1px solid var(--border-soft);
+            border-radius: 10px;
+            padding: 14px;
+        }
+
+        .checklist-box h3,
+        .reminder-box h3 {
+            margin: 0 0 10px;
+            font-size: 1rem;
+            color: var(--title-main);
+        }
+
+        .checklist-box ul,
+        .reminder-box ul,
+        .reminder-box ol {
+            margin: 0;
+            padding-left: 18px;
+            color: #44515e;
+            line-height: 1.55;
+        }
+
+        .reminder-box li,
+        .checklist-box li {
+            margin-bottom: 8px;
+        }
+
+        @media (max-width: 960px) {
+            .consultor-grid,
+            .consultor-bottom {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 640px) {
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .mini-line {
+                grid-template-columns: 1fr;
+            }
+
+            .titulo {
+                font-size: 1.7rem;
+            }
+
+            .subtitulo {
+                font-size: 0.95rem;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="contenedor">
+    <div class="titulo">Consultor de Carga</div>
+    <div class="subtitulo">Usa esta pantalla como apoyo para saber cómo configurar una promoción antes de crearla. Arriba tienes el flujo principal y abajo los recordatorios operativos.</div>
+
+    <section class="consultor-grid">
+        <div class="card card-accent">
+            <div class="card-header">Datos de la solicitud</div>
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="areaResponsable">Área responsable</label>
+                    <select id="areaResponsable">
+                        <option value="">Seleccionar</option>
+                        <option value="BYCP">BYCP</option>
+                        <option value="FARMA">Farma</option>
+                        <option value="BIENESTAR">Bienestar</option>
+                        <option value="MSJE">MSJE</option>
+                        <option value="DERMO">Dermo</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label for="tipoDescuento">Tipo de descuento</label>
+                    <select id="tipoDescuento" onchange="actualizarCamposVisibles()">
+                        <option value="">Seleccionar</option>
+                        <option value="NOMINAL">Nominal</option>
+                        <option value="PACK_NOMINAL">Pack nominal</option>
+                        <option value="PORCENTUAL">Porcentual</option>
+                        <option value="PACK">Pack</option>
+                        <option value="SEGUNDA_UNIDAD">2da unidad</option>
+                        <option value="MSJE">Mensaje</option>
+                    </select>
+                </div>
+
+                <div class="field" id="fieldUnidadesPack">
+                    <label for="unidadesPack">#Unidades Pack</label>
+                    <input id="unidadesPack" type="number" min="1" step="1" placeholder="Ej: 1, 2, 3">
+                </div>
+
+                <div class="field" id="fieldPvpOferta">
+                    <label for="pvpOfertaPack">PVP Oferta Pack</label>
+                    <input id="pvpOfertaPack" type="number" min="0" step="0.01" placeholder="Ej: 8990 o 2490">
+                    <div class="help">Usa el valor comercial visible en el Excel cuando corresponda.</div>
+                </div>
+
+                <div class="field hidden" id="fieldDescuentoPorcentual">
+                    <label for="descuentoPorcentual">Descuento porcentual</label>
+                    <input id="descuentoPorcentual" type="text" placeholder="Ej: 30%">
+                </div>
+
+                <div class="field" id="fieldDescuentoNominal">
+                    <label for="descuentoNominal">Descuento nominal</label>
+                    <input id="descuentoNominal" type="number" min="0" step="0.01" placeholder="Ej: 4000, 1980, 890">
+                </div>
+
+                <div class="field full">
+                    <label for="detalleSolicitud">Detalle / observación de la solicitud</label>
+                    <textarea id="detalleSolicitud" placeholder="Pega aquí notas del correo o cualquier detalle relevante de la promoción."></textarea>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" type="button" onclick="generarGuia()">Generar guía de carga</button>
+                <button class="btn btn-secondary" type="button" onclick="limpiarFormulario()">Limpiar</button>
+            </div>
+
+            <div class="soft-box">
+                En esta versión están mejor modelados los casos de <strong>NOMINAL unitario</strong> y <strong>PACK NOMINAL</strong>. El resto todavía entrega orientación preliminar.
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Guía sugerida</div>
+
+            <div id="estadoGeneral" class="status">Esperando datos para generar guía</div>
+
+            <div class="guide-compact">
+                <div class="mini-section">
+                    <h3>Básico</h3>
+                    <div id="bloqueBasico" class="mini-lines"></div>
+                </div>
+
+                <div class="mini-section">
+                    <h3>Condiciones</h3>
+                    <div id="bloqueCondiciones" class="mini-lines"></div>
+                </div>
+
+                <div class="mini-section">
+                    <h3>Aplicadores</h3>
+                    <div id="bloqueAplicadores" class="mini-lines"></div>
+                </div>
+
+                <div class="mini-section">
+                    <h3>Camino esperado</h3>
+                    <div id="bloqueCamino"></div>
+                </div>
+
+                <div class="mini-section">
+                    <h3>Observaciones</h3>
+                    <div id="bloqueObservaciones"></div>
+                </div>
+            </div>
+
+            <div class="checklist-box">
+                <h3>Resumen de carga sugerida</h3>
+                <ul id="checklistResumen">
+                    <li>Completa los datos de la izquierda y presiona “Generar guía de carga”.</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section class="consultor-bottom">
+        <div class="card">
+            <div class="card-header">Notas importantes</div>
+            <div class="reminder-box">
+                <ul>
+                    <li>Los productos o la lista de productos de la <strong>condición</strong> deben coincidir con los del <strong>aplicador</strong>.</li>
+                    <li>Verificar <strong>fecha inicio</strong> y <strong>fecha fin</strong> al momento de la carga.</li>
+                    <li>Si existe una lista de locales específica para la promoción, se debe seleccionar.</li>
+                    <li>Si no hay lista de locales para la promo y queda solo la exclusión <strong>! EXC_LOCALES</strong>, eso indica que la promoción va a <strong>todos los locales</strong> excepto los excluidos.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">Guía de carga</div>
+            <div class="reminder-box">
+                <ol>
+                    <li><strong>Nueva promoción</strong> &gt; seleccionar <strong>Área</strong> y <strong>Tipo de promoción</strong> (la más común es <strong>1000 - Venta</strong>) &gt; seleccionar <strong>Category</strong> &gt; seleccionar <strong>Competencia</strong> &gt; verificar el check en <strong>Habilitada</strong>.</li>
+                    <li><strong>Pestaña Tiempo</strong> &gt; seleccionar <strong>fecha inicio</strong> y <strong>fecha fin</strong> &gt; marcar días en caso de ser necesario.</li>
+                    <li><strong>Pestaña Condiciones</strong> &gt; seleccionar <strong>Tipo = Boleta</strong> &gt; seleccionar <strong>Lista de locales</strong> solo si la promoción tiene una lista específica &gt; mantener la exclusión <strong>! EXC_LOCALES</strong>.</li>
+                    <li>Seleccionar <strong>Productos</strong> en la cascada y agregar los productos en <strong>EAN =</strong> o bien seleccionar <strong>Lista de productos</strong> &gt; agregar la condición.</li>
+                    <li><strong>Aplicadores</strong> &gt; seleccionar la pestaña según el descuento: <strong>Monto a producto</strong> cuando el descuento es por monto, <strong>Porcentaje a producto</strong> cuando es porcentual, <strong>Precio fijo</strong> cuando es precio fijo. Marcar el check <strong>Por unidad</strong> si el descuento aplica a cada producto.</li>
+                    <li><strong>Cantidad</strong> y <strong>Estrategia</strong> se seleccionan según la promoción.</li>
+                    <li>En el campo <strong>Producto</strong> agregar el producto o la lista &gt; agregar <strong>Filtro de producto</strong> &gt; agregar <strong>Aplicador</strong>.</li>
+                </ol>
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function actualizarCamposVisibles() {
+    const tipo = document.getElementById('tipoDescuento').value;
+    const fieldUnidadesPack = document.getElementById('fieldUnidadesPack');
+    const fieldPvpOferta = document.getElementById('fieldPvpOferta');
+    const fieldDescPct = document.getElementById('fieldDescuentoPorcentual');
+    const fieldDescNom = document.getElementById('fieldDescuentoNominal');
+
+    [fieldUnidadesPack, fieldPvpOferta, fieldDescPct, fieldDescNom].forEach(el => el.classList.remove('hidden'));
+
+    if (tipo === 'NOMINAL') {
+        fieldDescPct.classList.add('hidden');
+    } else if (tipo === 'PACK_NOMINAL') {
+        fieldDescPct.classList.add('hidden');
+    } else if (tipo === 'PORCENTUAL') {
+        fieldPvpOferta.classList.add('hidden');
+        fieldDescNom.classList.add('hidden');
+    } else if (tipo === 'PACK') {
+        fieldDescPct.classList.add('hidden');
+        fieldDescNom.classList.add('hidden');
+    } else if (tipo === 'SEGUNDA_UNIDAD') {
+        fieldDescNom.classList.add('hidden');
+    } else if (tipo === 'MSJE') {
+        fieldUnidadesPack.classList.add('hidden');
+        fieldPvpOferta.classList.add('hidden');
+        fieldDescPct.classList.add('hidden');
+        fieldDescNom.classList.add('hidden');
+    }
+}
+
+function filaMini(k, v) {
+    return `<div class="mini-line"><div class="mini-key">${k}</div><div class="mini-val">${v || '-'}</div></div>`;
+}
+
+function notaCompacta(texto) {
+    return `<div class="compact-note">${texto}</div>`;
+}
+
+function setHTML(id, html) {
+    document.getElementById(id).innerHTML = html;
+}
+
+function generarGuia() {
+    const area = document.getElementById('areaResponsable').value;
+    const tipo = document.getElementById('tipoDescuento').value;
+    const unidades = Number(document.getElementById('unidadesPack').value || 0);
+    const pvpOferta = document.getElementById('pvpOfertaPack').value;
+    const descuentoPct = document.getElementById('descuentoPorcentual').value;
+    const descuentoNom = document.getElementById('descuentoNominal').value;
+    const detalle = document.getElementById('detalleSolicitud').value;
+
+    let estadoClase = 'status ok';
+    let estadoTexto = 'Guía generada';
+    let basico = '';
+    let condiciones = '';
+    let aplicadores = '';
+    let observaciones = '';
+    let camino = '';
+    let checklist = [];
+
+    if (!area || !tipo) {
+        estadoClase = 'status warning';
+        estadoTexto = 'Faltan datos clave';
+        observaciones += notaCompacta('Debes indicar al menos Área responsable y Tipo de descuento.');
+    }
+
+    let competencia = 'Revisar';
+    let tipoPromocion = '1000 - Venta';
+
+    if (area === 'BYCP') competencia = 'Compite por promoción';
+    else if (area === 'FARMA') competencia = 'Compite por producto';
+    else if (area === 'BIENESTAR') competencia = 'Compite por producto';
+    else if (area === 'MSJE') competencia = 'Revisar según mensaje';
+    else if (area === 'DERMO') competencia = 'Revisar según caso';
+
+    basico += filaMini('Área', area || '-');
+    basico += filaMini('Tipo promoción', tipoPromocion);
+    basico += filaMini('Competencia', competencia);
+
+    if (tipo === 'NOMINAL' && unidades === 1) {
+        condiciones += filaMini('Tipo', 'Boleta');
+        condiciones += filaMini('Cantidad', 'No tratar como pack real');
+
+        aplicadores += filaMini('Pestaña', 'Precio fijo');
+        aplicadores += filaMini('Monto', pvpOferta || '-');
+        aplicadores += filaMini('Por unidad', 'Sí');
+        aplicadores += filaMini('Cantidad', 'Vacía / 0');
+        aplicadores += filaMini('Estrategia', 'Menor');
+
+        camino += notaCompacta(`Fija precio a cada producto, monto = ${pvpOferta || '-'}.`);
+
+        observaciones += notaCompacta('Caso identificado como nominal unitario.');
+        observaciones += notaCompacta('La referencia principal para el aplicador es el PVP Oferta Pack.');
+
+        checklist.push('Nueva promoción > seleccionar Área y Tipo de promoción 1000 - Venta.');
+        checklist.push('Seleccionar Competencia y verificar Habilitada.');
+        checklist.push('Pestaña Condiciones > Tipo = Boleta.');
+        checklist.push('Agregar producto por EAN o Lista según solicitud.');
+        checklist.push('Aplicadores > Descuento > Precio fijo.');
+    } else if (tipo === 'PACK_NOMINAL' && unidades > 1) {
+        condiciones += filaMini('Tipo', 'Boleta');
+        condiciones += filaMini('Cantidad', 'cada ' + unidades);
+
+        aplicadores += filaMini('Pestaña', 'Monto a producto');
+        aplicadores += filaMini('Monto', descuentoNom || '-');
+        aplicadores += filaMini('Por unidad', 'Sí');
+        aplicadores += filaMini('Cantidad', '1');
+        aplicadores += filaMini('Estrategia', 'Menor');
+
+        camino += notaCompacta(`Descuento a cada producto por monto = ${descuentoNom || '-'}, cantidad 1, estrategia Menor.`);
+
+        observaciones += notaCompacta('Caso identificado como PACK NOMINAL.');
+        observaciones += notaCompacta('Los productos o lista de la condición deben coincidir con los del aplicador.');
+
+        checklist.push('Nueva promoción > seleccionar Área y Tipo de promoción 1000 - Venta.');
+        checklist.push('Seleccionar Competencia y verificar Habilitada.');
+        checklist.push('Pestaña Condiciones > Tipo = Boleta.');
+        checklist.push('Agregar condición con cantidad cada = ' + unidades + '.');
+        checklist.push('Aplicadores > Descuento > Monto a producto.');
+        checklist.push('Marcar Por unidad, Cantidad = 1 y Estrategia = Menor.');
+    } else if (tipo === 'PORCENTUAL') {
+        condiciones += filaMini('Tipo', 'Boleta');
+        condiciones += filaMini('Cantidad', unidades > 0 ? 'cada ' + unidades : 'Según solicitud');
+
+        aplicadores += filaMini('Pestaña', 'Porcentaje a producto');
+        aplicadores += filaMini('Porcentaje', descuentoPct || '-');
+        aplicadores += filaMini('Cantidad', 'Según promoción');
+        aplicadores += filaMini('Estrategia', 'Según promoción');
+
+        camino += notaCompacta(`Aplicador porcentual esperado con porcentaje = ${descuentoPct || '-'}.`);
+        observaciones += notaCompacta('Orientación preliminar para descuento porcentual.');
+        checklist.push('Aplicadores > Descuento > Porcentaje a producto.');
+    } else if (tipo === 'PACK') {
+        condiciones += filaMini('Tipo', 'Boleta');
+        condiciones += filaMini('Cantidad', unidades > 0 ? 'cada ' + unidades : 'Según pack');
+
+        aplicadores += filaMini('Pestaña', 'Revisar según promo');
+        aplicadores += filaMini('Monto', pvpOferta || '-');
+
+        camino += notaCompacta('Caso pack: orientación preliminar.');
+        observaciones += notaCompacta('El tipo PACK todavía no está modelado con regla cerrada en esta versión.');
+    } else if (tipo === 'SEGUNDA_UNIDAD') {
+        condiciones += filaMini('Tipo', 'Boleta');
+        condiciones += filaMini('Cantidad', unidades > 0 ? 'cada ' + unidades : '2 si corresponde');
+
+        aplicadores += filaMini('Pestaña', 'Porcentaje a producto');
+        aplicadores += filaMini('Porcentaje', descuentoPct || '-');
+
+        camino += notaCompacta('Caso 2da unidad: orientación preliminar.');
+        observaciones += notaCompacta('La segunda unidad requiere una regla más precisa en una siguiente versión.');
+    } else if (tipo === 'MSJE') {
+        condiciones += filaMini('Tipo', 'Boleta');
+        aplicadores += filaMini('Pestaña', 'Mensaje');
+        aplicadores += filaMini('Salida', 'SCREEN');
+        camino += notaCompacta('Mensaje esperado en pantalla.');
+        observaciones += notaCompacta('Caso MSJE orientativo.');
+    } else {
+        condiciones += filaMini('Tipo', 'Boleta');
+        aplicadores += filaMini('Pestaña', 'Revisar');
+        camino += notaCompacta('Sin regla específica definida para esta combinación.');
+        observaciones += notaCompacta('No hay una regla específica armada para esta combinación todavía.');
+    }
+
+    observaciones += notaCompacta('Los productos o lista de productos de la condición deben coincidir con los del aplicador.');
+    observaciones += notaCompacta('Verificar fecha inicio y fecha fin al momento de la carga.');
+    if (detalle) observaciones += notaCompacta('Existe detalle adicional en la solicitud que conviene revisar antes de cargar.');
+
+    document.getElementById('estadoGeneral').className = estadoClase;
+    document.getElementById('estadoGeneral').textContent = estadoTexto;
+
+    setHTML('bloqueBasico', basico);
+    setHTML('bloqueCondiciones', condiciones);
+    setHTML('bloqueAplicadores', aplicadores);
+    setHTML('bloqueCamino', camino);
+    setHTML('bloqueObservaciones', observaciones);
+
+    const checklistHTML = checklist.length
+        ? checklist.map(x => `<li>${x}</li>`).join('')
+        : '<li>Sin checklist generado.</li>';
+
+    document.getElementById('checklistResumen').innerHTML = checklistHTML;
+}
+
+function limpiarFormulario() {
+    document.getElementById('areaResponsable').value = '';
+    document.getElementById('tipoDescuento').value = '';
+    document.getElementById('unidadesPack').value = '';
+    document.getElementById('pvpOfertaPack').value = '';
+    document.getElementById('descuentoPorcentual').value = '';
+    document.getElementById('descuentoNominal').value = '';
+    document.getElementById('detalleSolicitud').value = '';
+
+    document.getElementById('estadoGeneral').className = 'status';
+    document.getElementById('estadoGeneral').textContent = 'Esperando datos para generar guía';
+
+    setHTML('bloqueBasico', '');
+    setHTML('bloqueCondiciones', '');
+    setHTML('bloqueAplicadores', '');
+    setHTML('bloqueCamino', '');
+    setHTML('bloqueObservaciones', '');
+    document.getElementById('checklistResumen').innerHTML = '<li>Completa los datos de la izquierda y presiona “Generar guía de carga”.</li>';
+
+    actualizarCamposVisibles();
+}
+
+actualizarCamposVisibles();
+</script>
+</body>
+</html>
