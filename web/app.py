@@ -45,7 +45,9 @@ from validador import (
     leer_hoja_completar,
     leer_hoja_imput,
     ejecutar_flujo_tradicional,
+    ejecutar_flujo_eventos,
     validar_promocion_tradicional,
+    validar_promocion_eventos,
     validar_promocion_completar,
     normalizar_local,
     normalizar_texto,
@@ -198,6 +200,7 @@ def analizar_detalles(detalles):
     area_items = [x for x in mensajes if x["msg_plain"].startswith("[ÁREA]")]
     descuento_items = [x for x in mensajes if x["msg_plain"].startswith("[DESCUENTO]")]
     lista_items = [x for x in mensajes if x["msg_plain"].startswith("[LISTA PRODUCTOS]")]
+    locales_items = [x for x in mensajes if x["msg_plain"].startswith("[LOCALES]")]
     msje_items = [x for x in mensajes if x["msg_plain"].startswith("[MSJE]")]
 
     if area_items:
@@ -419,6 +422,30 @@ def analizar_detalles(detalles):
                     resumen["resumen_condicion"] = f"Lista: {m.group(1).strip()}"
                     break
 
+    lista_locales_resumen = "-"
+    locales_resumen = []
+    for x in locales_items:
+        txt = x["msg_plain"]
+        m_lista_local = re.search(r"LISTA LOCAL\s*\((.*?)\)", txt, re.IGNORECASE)
+        if m_lista_local:
+            lista_locales_resumen = m_lista_local.group(1).strip()
+        for m_local in re.finditer(r"LOCAL\s*\((.*?)\)", txt, re.IGNORECASE):
+            local = m_local.group(1).strip()
+            if local and local not in locales_resumen:
+                locales_resumen.append(local)
+
+    if lista_locales_resumen != "-":
+        if resumen["resumen_condicion"] == "-":
+            resumen["resumen_condicion"] = f"Lista locales: {lista_locales_resumen}"
+        elif f"Lista locales: {lista_locales_resumen}" not in resumen["resumen_condicion"]:
+            resumen["resumen_condicion"] += f" | Lista locales: {lista_locales_resumen}"
+    elif locales_resumen:
+        locales_txt = " - ".join(locales_resumen)
+        if resumen["resumen_condicion"] == "-":
+            resumen["resumen_condicion"] = f"Locales: {locales_txt}"
+        elif f"Locales: {locales_txt}" not in resumen["resumen_condicion"]:
+            resumen["resumen_condicion"] += f" | Locales: {locales_txt}"
+
     hay_err_id = any(x["tipo"] == "ERR" for x in id_items)
     hay_err_fact = any(x["tipo"] == "ERR" for x in fact_items)
     hay_err_cond = any(x["tipo"] == "ERR" for x in condicion_items)
@@ -573,6 +600,14 @@ def _estado_reporte_descarga(resultado):
 def _valor_si_no(valor):
     return "Sí" if bool(valor) else "No"
 
+
+
+
+def _tipo_descuento_no_wrap(texto):
+    txt = str(texto or "-").strip()
+    if not txt or txt == "-":
+        return "-"
+    return txt.replace(" - ", " - ")
 
 def _texto_competencia_prolijo(valor):
     txt = str(valor or "-").strip()
@@ -947,25 +982,28 @@ def procesar():
     promo_info_por_id, promos_por_id, listas_productos_export = construir_indices_export(export_files)
     mapa_area_responsable = construir_mapa_area_responsable(excel_files)
 
-    # FLUJO TRADICIONAL
+    # FLUJO EVENTOS
     if rc_web:
         try:
-            df_usuario, _, _, archivos_tradicional = ejecutar_flujo_tradicional(excel_files, rc_externo=rc_web)
-        except Exception:
-            df_usuario, archivos_tradicional = None, []
+            df_eventos_usuario, df_codigos_total, _, archivos_eventos = ejecutar_flujo_eventos(excel_files, rc_externo=rc_web)
+        except Exception as e:
+            escribir_log(f"ERROR flujo eventos: {e}")
+            print(f"ERROR flujo eventos: {e}")
+            df_eventos_usuario, df_codigos_total, archivos_eventos = None, pd.DataFrame(), []
 
-        if df_usuario is not None and not df_usuario.empty:
-            excel_origen_trad = ", ".join(sorted({os.path.basename(f) for f in archivos_tradicional}))
-            for id_geo, grupo in df_usuario.groupby("ID GEO"):
+        if df_eventos_usuario is not None and not df_eventos_usuario.empty:
+            excel_origen_eventos = ", ".join(sorted({os.path.basename(f) for f in archivos_eventos}))
+            for id_geo, grupo in df_eventos_usuario.groupby("ID GEO"):
                 id_geo_norm = normalizar_local(str(id_geo).split(".")[0])
                 promo = promos_por_id.get(id_geo_norm)
                 info = promo_info_por_id.get(id_geo_norm, {}).copy()
+
                 if "DESCUENTO" in grupo.columns:
                     val = grupo["DESCUENTO"].iloc[0]
                     if isinstance(val, (int, float)):
-                        info["__tipo_descuento"] = f"PORCENTUAL - {int(val * 100) if val <= 1 else int(val)}%"
+                        info["__tipo_descuento"] = _tipo_descuento_no_wrap(f"PORCENTUAL - {int(val * 100) if val <= 1 else int(val)}%")
                     else:
-                        info["__tipo_descuento"] = f"PORCENTUAL - {str(val).strip()}"
+                        info["__tipo_descuento"] = _tipo_descuento_no_wrap(f"PORCENTUAL - {str(val).strip()}")
                 else:
                     info["__tipo_descuento"] = "-"
 
@@ -976,13 +1014,89 @@ def procesar():
                         "estado_applier": "No evaluado", "fecha_inicio_ok": None, "fecha_fin_ok": None,
                         "tipo_promocion": "-", "resumen_condicion": "-", "resumen_aplicador": "-",
                     }
-                    resultados_tradicional.append(construir_resultado_web(id_geo, excel_origen_trad, "-", info, [{"tipo": "ERR", "msg": "No encontrada en export"}], analisis))
+                    resultados_tradicional.append(
+                        construir_resultado_web(
+                            id_geo,
+                            excel_origen_eventos,
+                            "-",
+                            info,
+                            [{"tipo": "ERR", "msg": "No encontrada en export"}],
+                            analisis,
+                        )
+                    )
                     continue
 
-                _, detalles = validar_promocion_tradicional(id_geo, grupo, promo, {}, {}, {})
+                nombre_lista_excel = ""
+                if "LISTA PRODUCTOS" in grupo.columns:
+                    listas_p = {
+                        normalizar_texto(v)
+                        for v in grupo["LISTA PRODUCTOS"]
+                        if str(v).strip() and normalizar_texto(v)
+                    }
+                    nombre_lista_excel = next(iter(sorted(listas_p))) if listas_p else ""
+
+                productos_excel = set()
+                if nombre_lista_excel:
+                    productos_excel = set()
+
+                if not productos_excel and not df_codigos_total.empty and "MARCA" in df_codigos_total.columns:
+                    marcas = {
+                        normalizar_texto(v)
+                        for v in grupo.get("MARCA", [])
+                        if str(v).strip() and normalizar_texto(v)
+                    }
+                    col_sku_codigos = None
+                    for candidata in ["CÓDIGO PRODUCTO", "CODIGO PRODUCTO", "SKU"]:
+                        if candidata in df_codigos_total.columns:
+                            col_sku_codigos = candidata
+                            break
+
+                    if col_sku_codigos:
+                        for marca in marcas:
+                            df_m = df_codigos_total[df_codigos_total["MARCA"].astype(str).str.upper() == marca]
+                            productos_excel.update(
+                                {
+                                    normalizar_texto(x)
+                                    for x in df_m[col_sku_codigos].tolist()
+                                    if str(x).strip()
+                                }
+                            )
+
+                _, detalles, msje_popup = validar_promocion_eventos(
+                    id_geo,
+                    grupo,
+                    promo,
+                    productos_excel=productos_excel,
+                    nombre_lista_excel=nombre_lista_excel,
+                    listas_productos_export=listas_productos_export,
+                    promos_por_id=promos_por_id,
+                )
+
                 analisis = analizar_detalles(detalles)
+                n_campana = ""
+                for candidata in ["N°CAM", "N° CAM", "N CAM", "N CAMPAÑA", "N°CAMPAÑA", "N° CAMPAÑA"]:
+                    if candidata in grupo.columns:
+                        valor_campana = grupo[candidata].iloc[0]
+                        if str(valor_campana).strip() and str(valor_campana).strip().upper() not in {"NAN", "NONE", "NULL"}:
+                            n_campana = str(valor_campana).strip()
+                            break
+                if n_campana:
+                    info["__numero_campana"] = n_campana
+                    base_resumen = (analisis.get("resumen_condicion") or "-").strip()
+                    analisis["resumen_condicion"] = f"N° campaña: {n_campana}" if base_resumen in {"", "-"} else f"N° campaña: {n_campana} | {base_resumen}"
+                info["__tipo_descuento"] = _tipo_descuento_no_wrap(analisis["tipo_promocion"] or info.get("__tipo_descuento", "-"))
                 info["__area_responsable"] = analisis.get("area_responsable", info.get("__area_responsable", "-"))
-                resultados_tradicional.append(construir_resultado_web(id_geo, excel_origen_trad, info.get("__export_origen", "-"), info, detalles, analisis))
+                resultados_tradicional.append(
+                    construir_resultado_web(
+                        id_geo,
+                        excel_origen_eventos,
+                        info.get("__export_origen", "-"),
+                        info,
+                        detalles,
+                        analisis,
+                        msje_popup=msje_popup,
+                    )
+                )
 
     # FLUJO COMPLETAR
     df_completar_total = pd.DataFrame()
@@ -1020,7 +1134,7 @@ def procesar():
                 retornar_msje_data=True,
             )
             analisis = analizar_detalles(detalles)
-            info["__tipo_descuento"] = analisis["tipo_promocion"] or promo.get("__tipo_descuento", "-")
+            info["__tipo_descuento"] = _tipo_descuento_no_wrap(analisis["tipo_promocion"] or promo.get("__tipo_descuento", "-"))
             info["__area_responsable"] = analisis.get("area_responsable", info.get("__area_responsable", "-"))
 
             resultado_principal = construir_resultado_web(
