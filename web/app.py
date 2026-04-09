@@ -187,6 +187,8 @@ def analizar_detalles(detalles):
         "tipo_promocion": "-",
         "resumen_condicion": "-",
         "resumen_aplicador": "-",
+        "restriccion_dias": "-",
+        "restriccion_dias_estado": "No evaluado",
         "mensaje_principal": "No coinciden",
         "aviso_principal": "",
     }
@@ -201,6 +203,7 @@ def analizar_detalles(detalles):
     descuento_items = [x for x in mensajes if x["msg_plain"].startswith("[DESCUENTO]")]
     lista_items = [x for x in mensajes if x["msg_plain"].startswith("[LISTA PRODUCTOS]")]
     locales_items = [x for x in mensajes if x["msg_plain"].startswith("[LOCALES]")]
+    dias_items = [x for x in mensajes if x["msg_plain"].startswith("[DÍAS]") or x["msg_plain"].startswith("[DIAS]")]
     msje_items = [x for x in mensajes if x["msg_plain"].startswith("[MSJE]")]
 
     if area_items:
@@ -446,17 +449,53 @@ def analizar_detalles(detalles):
         elif f"Locales: {locales_txt}" not in resumen["resumen_condicion"]:
             resumen["resumen_condicion"] += f" | Locales: {locales_txt}"
 
+    esperado_dias = None
+    export_dias = None
+    for x in dias_items:
+        txt = x["msg_plain"]
+        if "Excel indica restricción" in txt or "Excel indica restriccion" in txt:
+            if "L-J" in txt or "lunes y jueves" in txt.lower():
+                esperado_dias = "Lunes y Jueves"
+        if "Export respeta L-J" in txt:
+            m_ok = re.search(r":\s*(.*?)\s*$", txt)
+            export_dias = m_ok.group(1).strip() if m_ok else "Lunes, Jueves"
+        elif "Export no respeta L-J" in txt:
+            m_err = re.search(r"Esperado\s*\((.*?)\)\s*pero trae\s*(.*)$", txt, re.IGNORECASE)
+            if m_err:
+                esperado_dias = esperado_dias or m_err.group(1).strip()
+                export_dias = m_err.group(2).strip()
+            else:
+                m_trae = re.search(r"trae\s*(.*)$", txt, re.IGNORECASE)
+                if m_trae:
+                    export_dias = m_trae.group(1).strip()
+        elif "No se pudo leer daysAndHours" in txt:
+            export_dias = "No se pudo leer Export"
+
+    if dias_items:
+        if any(x["tipo"] == "ERR" for x in dias_items):
+            resumen["restriccion_dias_estado"] = "No coinciden"
+            if esperado_dias and export_dias:
+                resumen["restriccion_dias"] = f"ERROR — Esperado {esperado_dias} | Export {export_dias}"
+            elif esperado_dias:
+                resumen["restriccion_dias"] = f"ERROR — Esperado {esperado_dias}"
+            else:
+                resumen["restriccion_dias"] = "ERROR — Restricción de días incorrecta"
+        elif any(x["tipo"] == "OK" for x in dias_items) or esperado_dias:
+            resumen["restriccion_dias_estado"] = "Coinciden"
+            resumen["restriccion_dias"] = esperado_dias or export_dias or "Lunes y Jueves"
+
     hay_err_id = any(x["tipo"] == "ERR" for x in id_items)
     hay_err_fact = any(x["tipo"] == "ERR" for x in fact_items)
     hay_err_cond = any(x["tipo"] == "ERR" for x in condicion_items)
     hay_err_applier = applier_sin_sku_explicito or any(x["tipo"] == "ERR" for x in applier_items)
-    solo_ext_fecha_inicio = inicio_tipo == "WARN" and fin_tipo == "OK" and not hay_err_id and not hay_err_fact and not hay_err_cond and not hay_err_applier
+    hay_err_dias = any(x["tipo"] == "ERR" for x in dias_items)
+    solo_ext_fecha_inicio = inicio_tipo == "WARN" and fin_tipo == "OK" and not hay_err_id and not hay_err_fact and not hay_err_cond and not hay_err_applier and not hay_err_dias
 
     if solo_ext_fecha_inicio:
         resumen["mensaje_principal"] = "Coinciden"
         resumen["aviso_principal"] = "Posible extensión: fecha inicio diferente"
     else:
-        if hay_err_id or hay_err_fact or hay_err_cond or hay_err_applier or fin_tipo == "ERR" or (inicio_tipo == "ERR" and fin_tipo != "OK"):
+        if hay_err_id or hay_err_fact or hay_err_cond or hay_err_applier or hay_err_dias or fin_tipo == "ERR" or (inicio_tipo == "ERR" and fin_tipo != "OK"):
             resumen["mensaje_principal"] = "No coinciden"
         elif inicio_tipo == "OK" and fin_tipo == "OK":
             resumen["mensaje_principal"] = "Coinciden"
@@ -559,6 +598,8 @@ def construir_resultado_web(id_geo, excel_origen, export_origen, promo_info, det
         "tipo_promocion": analisis["tipo_promocion"],
         "resumen_condicion": analisis["resumen_condicion"],
         "resumen_aplicador": analisis["resumen_aplicador"],
+        "restriccion_dias": analisis.get("restriccion_dias", "-"),
+        "restriccion_dias_estado": analisis.get("restriccion_dias_estado", "No evaluado"),
         "es_msje_popup": es_msje_popup,
         "id_padre": str(id_padre or ""),
         "msje_popup_hay": msje_popup_hay,
