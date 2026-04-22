@@ -73,6 +73,26 @@ except Exception:
     def registrar_rutas_repositorio(_app):
         return None
 
+try:
+    from consultor.reglas_consultor import REGLAS_CONSULTOR
+    from consultor.consultor_carga import construir_consulta
+except Exception:
+    try:
+        from reglas_consultor import REGLAS_CONSULTOR
+        from consultor_carga import construir_consulta
+    except Exception:
+        REGLAS_CONSULTOR = {
+            "catalogos": {
+                "modalidades": [],
+                "submodos_club": [],
+                "areas_funcionales": [],
+                "tipos_descuento": [],
+            },
+            "textos": {},
+            "requiere_mensaje_tipos": [],
+        }
+        construir_consulta = None
+
 # ============================================================
 # CONFIGURACIÓN FLASK
 # ============================================================
@@ -866,7 +886,40 @@ def inicio():
 # ============================================================
 @app.route("/consultor")
 def consultor():
-    return render_template("consultor_ui.html")
+    consultor_backend_ok = callable(construir_consulta)
+    return render_template(
+        "consultor_ui.html",
+        consultor_backend_ok=consultor_backend_ok,
+        consultor_catalogos=REGLAS_CONSULTOR.get("catalogos", {}),
+        consultor_textos=REGLAS_CONSULTOR.get("textos", {}),
+        consultor_requiere_mensaje_tipos=REGLAS_CONSULTOR.get("requiere_mensaje_tipos", []),
+    )
+
+
+@app.route("/consultor/preview", methods=["POST"])
+def consultor_preview():
+    if not callable(construir_consulta):
+        return jsonify({
+            "ok": False,
+            "error": "El motor del consultor no está disponible.",
+        }), 500
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        payload = request.form.to_dict(flat=True)
+
+    try:
+        resultado = construir_consulta(payload or {})
+        return jsonify({
+            "ok": True,
+            "resultado": resultado,
+        })
+    except Exception as e:
+        escribir_log(f"ERROR consultor/preview: {e}")
+        return jsonify({
+            "ok": False,
+            "error": str(e),
+        }), 400
 
 # ============================================================
 # SUBIR ARCHIVOS
