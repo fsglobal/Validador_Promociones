@@ -21,7 +21,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from reglas_consultor import (
+from .reglas_consultor import (
     MODALIDAD_CLUB,
     MODALIDAD_MASIVA,
     SUBMODO_CLON,
