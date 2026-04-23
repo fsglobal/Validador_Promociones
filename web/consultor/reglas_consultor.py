@@ -30,6 +30,7 @@ from typing import Any
 
 MODALIDAD_MASIVA = "MASIVA"
 MODALIDAD_CLUB = "CLUB"
+MODALIDAD_EVENTOS = "EVENTOS"
 
 SUBMODO_ORIGINAL = "ORIGINAL"
 SUBMODO_CLON = "CLON"
@@ -46,7 +47,7 @@ TIPO_PORCENTUAL = "PORCENTUAL"
 TIPO_PACK_NOMINAL = "PACK_NOMINAL"
 TIPO_DCTO_2DA_UNIDAD = "DCTO_2DA_UNIDAD"
 TIPO_PACK_PRECIO_FIJO = "PACK_NOMINAL_PRECIO_FIJO"
-TIPO_BYCP_3X2_ESPECIAL = "BYCP_3X2_ESPECIAL"
+TIPO_PACK_ESPECIAL_BYCP = "PACK_ESPECIAL_BYCP"
 
 TIPOS_DESCUENTO_SOPORTADOS = (
     TIPO_NOMINAL,
@@ -54,7 +55,7 @@ TIPOS_DESCUENTO_SOPORTADOS = (
     TIPO_PACK_NOMINAL,
     TIPO_DCTO_2DA_UNIDAD,
     TIPO_PACK_PRECIO_FIJO,
-    TIPO_BYCP_3X2_ESPECIAL,
+    TIPO_PACK_ESPECIAL_BYCP,
 )
 
 AREAS_FUNCIONALES = (
@@ -179,6 +180,25 @@ def _aplicar_masiva(regla: dict[str, Any], area_funcional: str) -> dict[str, Any
     r["basico"]["area_geo_final"] = area_funcional
     r["basico"]["grupo_geo"] = None
     r["basico"]["nombre_general"] = NOMBRE_GENERAL_NORMAL
+    return r
+
+
+def _aplicar_eventos(regla: dict[str, Any], area_funcional: str) -> dict[str, Any]:
+    r = deepcopy(regla)
+    r["basico"]["modalidad"] = MODALIDAD_EVENTOS
+    r["basico"]["submodo_club"] = None
+    r["basico"]["area_geo_final"] = area_funcional
+    r["basico"]["grupo_geo"] = None
+    r["basico"]["nombre_general"] = NOMBRE_GENERAL_NORMAL
+    r["tiempo"]["usa_dias_especificos"] = True
+    r["tiempo"]["observaciones"].append(
+        "En EVENTOS se deben revisar fechas y días específicos."
+    )
+    r["condiciones"]["locales_regla"] = "Locales asignados"
+    r["condiciones"]["observaciones"].append(
+        "En EVENTOS usar locales asignados en lugar de EXC_LOCALES."
+    )
+    r["alertas"].append("EVENTOS usa locales asignados y requiere revisar fechas/días.")
     return r
 
 
@@ -426,7 +446,7 @@ REGLAS_POR_TIPO_Y_AREA: dict[str, dict[str, dict[str, Any]]] = {
             ],
         },
     },
-    TIPO_BYCP_3X2_ESPECIAL: {
+    TIPO_PACK_ESPECIAL_BYCP: {
         AREA_BYCP: {
             "competencia": COMP_POR_PRODUCTO,
             "aplicador": APLICADOR_PORCENTAJE,
@@ -438,13 +458,15 @@ REGLAS_POR_TIPO_Y_AREA: dict[str, dict[str, dict[str, Any]]] = {
             "estrategia": ESTRATEGIA_MENOR,
             "por_unidad": None,
             "notas": [
-                "Caso especial BYCP 3x2.",
+                "PACK ESPECIAL BYCP.",
                 "No tratar como pack a precio fijo.",
                 "Usar Porcentaje a producto con 100% a 1 unidad.",
                 "Competencia por producto porque el descuento cae sobre el menor.",
+                "Para este caso la cantidad del pack queda fija en 3.",
             ],
         },
     },
+
 }
 
 
@@ -472,7 +494,7 @@ def resolver_regla(
     submodo_club:
         "ORIGINAL" o "CLON" cuando la modalidad sea CLUB
     """
-    if modalidad not in (MODALIDAD_MASIVA, MODALIDAD_CLUB):
+    if modalidad not in (MODALIDAD_MASIVA, MODALIDAD_CLUB, MODALIDAD_EVENTOS):
         raise ValueError(f"Modalidad no soportada: {modalidad}")
 
     if area_funcional not in AREAS_FUNCIONALES:
@@ -481,11 +503,11 @@ def resolver_regla(
     if tipo_descuento not in TIPOS_DESCUENTO_SOPORTADOS:
         raise ValueError(f"Tipo de descuento no soportado: {tipo_descuento}")
 
-    if tipo_descuento == TIPO_BYCP_3X2_ESPECIAL and area_funcional != AREA_BYCP:
-        raise ValueError("El caso especial BYCP 3x2 solo aplica al área BYCP.")
-
     if modalidad == MODALIDAD_CLUB and submodo_club not in (SUBMODO_ORIGINAL, SUBMODO_CLON):
         raise ValueError("En modalidad CLUB debe indicar submodo_club='ORIGINAL' o 'CLON'.")
+
+    if tipo_descuento == TIPO_PACK_ESPECIAL_BYCP and area_funcional != AREA_BYCP:
+        raise ValueError("PACK ESPECIAL BYCP solo aplica al área BYCP.")
 
     config = REGLAS_POR_TIPO_Y_AREA[tipo_descuento][area_funcional]
     regla = _base_regla()
@@ -522,11 +544,6 @@ def resolver_regla(
             "Este tipo de promoción normalmente requiere campaña de mensaje asociada."
         )
 
-    if tipo_descuento == TIPO_BYCP_3X2_ESPECIAL:
-        regla["alertas"].append(
-            "Caso especial BYCP 3x2: condición 3, porcentaje 100 a 1 unidad, strategy menor y competencia por producto."
-        )
-
     # Camino narrado
     regla["camino"] = [
         f"En Básico, definir competencia como '{config['competencia']}'.",
@@ -559,6 +576,8 @@ def resolver_regla(
     # Modalidad
     if modalidad == MODALIDAD_MASIVA:
         regla = _aplicar_masiva(regla, area_funcional)
+    elif modalidad == MODALIDAD_EVENTOS:
+        regla = _aplicar_eventos(regla, area_funcional)
     else:
         regla = _aplicar_club(regla, submodo_club=submodo_club)  # type: ignore[arg-type]
 
@@ -576,7 +595,7 @@ def resolver_regla(
 
 REGLAS_CONSULTOR: dict[str, Any] = {
     "catalogos": {
-        "modalidades": [MODALIDAD_MASIVA, MODALIDAD_CLUB],
+        "modalidades": [MODALIDAD_MASIVA, MODALIDAD_CLUB, MODALIDAD_EVENTOS],
         "submodos_club": [SUBMODO_ORIGINAL, SUBMODO_CLON],
         "areas_funcionales": list(AREAS_FUNCIONALES),
         "tipos_descuento": list(TIPOS_DESCUENTO_SOPORTADOS),
