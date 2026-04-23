@@ -524,7 +524,7 @@ def resolver_regla(
 
     if tipo_descuento == TIPO_BYCP_3X2_ESPECIAL:
         regla["alertas"].append(
-            "Caso especial BYCP 3x2: condición 3, 100% a 1 unidad, strategy menor, competencia por producto."
+            "Caso especial BYCP 3x2: condición 3, porcentaje 100 a 1 unidad, strategy menor y competencia por producto."
         )
 
     # Camino narrado
