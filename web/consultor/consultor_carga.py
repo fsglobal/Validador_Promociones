@@ -21,7 +21,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
-from .reglas_consultor import (
+from reglas_consultor import (
     MODALIDAD_CLUB,
     MODALIDAD_MASIVA,
     SUBMODO_CLON,
@@ -34,6 +34,7 @@ from .reglas_consultor import (
     TIPO_PACK_NOMINAL,
     TIPO_PACK_PRECIO_FIJO,
     TIPO_PORCENTUAL,
+    TIPO_BYCP_3X2_ESPECIAL,
     resolver_regla,
 )
 
@@ -73,6 +74,10 @@ ALIASES_TIPO = {
     "PACK NOMINAL A PRECIO FIJO": TIPO_PACK_PRECIO_FIJO,
     "PACK PRECIO FIJO": TIPO_PACK_PRECIO_FIJO,
     "PACK_NOMINAL_PRECIO_FIJO": TIPO_PACK_PRECIO_FIJO,
+    "BYCP 3X2 ESPECIAL": TIPO_BYCP_3X2_ESPECIAL,
+    "BYCP_3X2_ESPECIAL": TIPO_BYCP_3X2_ESPECIAL,
+    "3X2 BYCP": TIPO_BYCP_3X2_ESPECIAL,
+    "BYCP 3X2": TIPO_BYCP_3X2_ESPECIAL,
 }
 
 
@@ -188,6 +193,8 @@ def _calcular_valor_aplicador(data: dict[str, Any], regla: dict[str, Any]) -> di
         valor_original = _safe_float(data.get("descuento_pack_nominal_bruto"))
     elif origen == "Descuento Porcentual":
         valor_original = _safe_float(data.get("descuento_porcentual"))
+        if data.get("tipo_descuento") == TIPO_BYCP_3X2_ESPECIAL and valor_original is None:
+            valor_original = 100.0
     else:
         valor_original = None
 
@@ -298,6 +305,11 @@ def construir_alertas(data: dict[str, Any], regla: dict[str, Any]) -> list[str]:
 
     if data.get("modalidad") == MODALIDAD_CLUB:
         alertas.append("En CLUB, el área GEO final no es el área funcional: siempre va FIDELIZACION.")
+
+    if tipo_descuento == TIPO_BYCP_3X2_ESPECIAL:
+        alertas.append("Caso especial BYCP 3x2: no tratar como pack a precio fijo.")
+        alertas.append("Usar condición cantidad 3, aplicador porcentaje 100 a 1 unidad y strategy menor.")
+        alertas.append("Competencia por producto porque el beneficio cae sobre el producto de menor valor.")
 
     return alertas
 
@@ -412,6 +424,8 @@ def construir_guia_textual(payload: dict[str, Any]) -> str:
     lineas.append(f"Área GEO final: {resumen['area_geo_final']}")
     lineas.append(f"Competencia: {resumen['competencia']}")
     lineas.append(f"Aplicador GEO: {resumen['aplicador_geo']}")
+    if consulta['entrada_normalizada']['tipo_descuento'] == TIPO_BYCP_3X2_ESPECIAL:
+        lineas.append("Caso especial: BYCP 3x2 no se interpreta como pack a precio fijo.")
     lineas.append("")
 
     lineas.append("BÁSICO")
