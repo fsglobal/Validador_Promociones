@@ -46,6 +46,7 @@ TIPO_PORCENTUAL = "PORCENTUAL"
 TIPO_PACK_NOMINAL = "PACK_NOMINAL"
 TIPO_DCTO_2DA_UNIDAD = "DCTO_2DA_UNIDAD"
 TIPO_PACK_PRECIO_FIJO = "PACK_NOMINAL_PRECIO_FIJO"
+TIPO_BYCP_3X2_ESPECIAL = "BYCP_3X2_ESPECIAL"
 
 TIPOS_DESCUENTO_SOPORTADOS = (
     TIPO_NOMINAL,
@@ -53,6 +54,7 @@ TIPOS_DESCUENTO_SOPORTADOS = (
     TIPO_PACK_NOMINAL,
     TIPO_DCTO_2DA_UNIDAD,
     TIPO_PACK_PRECIO_FIJO,
+    TIPO_BYCP_3X2_ESPECIAL,
 )
 
 AREAS_FUNCIONALES = (
@@ -424,6 +426,25 @@ REGLAS_POR_TIPO_Y_AREA: dict[str, dict[str, dict[str, Any]]] = {
             ],
         },
     },
+    TIPO_BYCP_3X2_ESPECIAL: {
+        AREA_BYCP: {
+            "competencia": COMP_POR_PRODUCTO,
+            "aplicador": APLICADOR_PORCENTAJE,
+            "origen_valor": "Descuento Porcentual",
+            "divide_valor": False,
+            "formula_division": None,
+            "cantidad_condicion": 3,
+            "cantidad_aplicador": 1,
+            "estrategia": ESTRATEGIA_MENOR,
+            "por_unidad": None,
+            "notas": [
+                "Caso especial BYCP 3x2.",
+                "No tratar como pack a precio fijo.",
+                "Usar Porcentaje a producto con 100% a 1 unidad.",
+                "Competencia por producto porque el descuento cae sobre el menor.",
+            ],
+        },
+    },
 }
 
 
@@ -459,6 +480,9 @@ def resolver_regla(
 
     if tipo_descuento not in TIPOS_DESCUENTO_SOPORTADOS:
         raise ValueError(f"Tipo de descuento no soportado: {tipo_descuento}")
+
+    if tipo_descuento == TIPO_BYCP_3X2_ESPECIAL and area_funcional != AREA_BYCP:
+        raise ValueError("El caso especial BYCP 3x2 solo aplica al área BYCP.")
 
     if modalidad == MODALIDAD_CLUB and submodo_club not in (SUBMODO_ORIGINAL, SUBMODO_CLON):
         raise ValueError("En modalidad CLUB debe indicar submodo_club='ORIGINAL' o 'CLON'.")
@@ -496,6 +520,11 @@ def resolver_regla(
     if regla["resumen"]["requiere_mensaje"]:
         regla["alertas"].append(
             "Este tipo de promoción normalmente requiere campaña de mensaje asociada."
+        )
+
+    if tipo_descuento == TIPO_BYCP_3X2_ESPECIAL:
+        regla["alertas"].append(
+            "Caso especial BYCP 3x2: condición 3, 100% a 1 unidad, strategy menor, competencia por producto."
         )
 
     # Camino narrado
