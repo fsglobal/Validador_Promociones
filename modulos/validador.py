@@ -1976,7 +1976,16 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
 
     col_fact = buscar_columna(grupo, ["ID A FACTURAR", "ID a Facturar", "ID FACTURAR"])
     id_fact = normalizar_local(grupo[col_fact].iloc[0]) if col_fact else None
-    if id_fact and id_fact != id_excel:
+    es_club_geo = normalizar_texto(promo.get("area_name")) == "FIDELIZACION"
+
+    if id_fact and es_club_geo:
+        agregar_detalle(
+            detalles,
+            "OK",
+            "FACTURAR",
+            f"ID a Facturar informado para campaña CLUB <span class='text-blue'>({id_fact})</span>. Puede diferir del ID Geocom <span class='text-blue'>({id_excel})</span>"
+        )
+    elif id_fact and id_fact != id_excel:
         agregar_detalle(detalles, "WARN", "FACTURAR", f"ID a Facturar <span class='text-blue'>({id_fact})</span> es distinto de ID Geocom <span class='text-blue'>({id_excel})</span>")
     elif id_fact:
         agregar_detalle(detalles, "OK", "FACTURAR", f"ID a Facturar coincide <span class='text-blue'>({id_fact})</span>")
