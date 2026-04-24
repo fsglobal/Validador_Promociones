@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import unicodedata
 import xml.etree.ElementTree as ET
 from io import StringIO
 
@@ -84,6 +85,18 @@ def normalizar_encabezado(v):
     if v is None:
         return ""
     return re.sub(r"\s+", " ", str(v).replace("\n", " ")).strip()
+
+
+def normalizar_clave_columna(v):
+    """
+    Normaliza nombres de columnas para búsquedas tolerantes a:
+    tildes, saltos de línea, espacios, guiones y variaciones de mayúsculas.
+    Ej.: "Área Responsable", "AreaResponsable" y "AREA RESPONSABLE" -> "AREARESPONSABLE".
+    """
+    texto = normalizar_encabezado(v).upper()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    return re.sub(r"[^A-Z0-9]", "", texto)
 
 
 def es_id_promocion_valido(v):
@@ -908,17 +921,32 @@ def evaluar_fechas(fi_excel, ff_excel, fi_export, ff_export, detalles, grupo="FE
 
 
 def buscar_columna(df, nombres_posibles):
-    columnas_norm = {
-        c: str(c).replace("\n", " ").replace("  ", " ").strip().upper()
-        for c in df.columns
-    }
-    nombres_norm = [
-        str(n).replace("\n", " ").replace("  ", " ").strip().upper()
-        for n in nombres_posibles
-    ]
+    """Busca una columna tolerando tildes, saltos de línea y espacios.
+
+    Mantiene compatibilidad con los nombres actuales, pero permite detectar
+    encabezados reales como "Área Responsable" aunque el código busque
+    "AREARESPONSABLE" o "AREA RESPONSABLE".
+    """
+    if df is None:
+        return None
+
+    columnas_norm = {c: normalizar_clave_columna(c) for c in df.columns}
+    nombres_norm = [normalizar_clave_columna(n) for n in nombres_posibles]
+
+    # Coincidencia exacta normalizada
     for col_real, col_norm in columnas_norm.items():
         if col_norm in nombres_norm:
             return col_real
+
+    # Fallback conservador: permite detectar encabezados con texto adicional
+    # sin tomar columnas vacías o genéricas.
+    for col_real, col_norm in columnas_norm.items():
+        if not col_norm or col_norm.startswith("UNNAMED"):
+            continue
+        for nombre in nombres_norm:
+            if nombre and (nombre in col_norm or col_norm in nombre):
+                return col_real
+
     return None
 
 
@@ -1687,8 +1715,14 @@ def leer_hoja_imput(path_excel):
     max_filas = min(12, len(df_norm))
 
     for fila in range(max_filas):
-        fila_vals = {normalizar_texto(v) for v in df_norm.iloc[fila].tolist()}
-        if "AREARESPONSABLE" in fila_vals and any("GEOCOM" in v for v in fila_vals):
+        fila_claves = {normalizar_clave_columna(v) for v in df_norm.iloc[fila].tolist()}
+        tiene_area = "AREARESPONSABLE" in fila_claves or "AREA" in fila_claves
+        tiene_id = any(
+            clave in fila_claves
+            for clave in {"IDGEOCOM", "IDGEO", "IDAFACTURAR", "IDLISTACLIENTE"}
+        ) or any("GEOCOM" in clave for clave in fila_claves)
+
+        if tiene_area and tiene_id:
             try:
                 df = pd.read_excel(path_excel, sheet_name=hoja_objetivo, header=fila)
                 df = limpiar_dataframe_columnas(df)
@@ -1696,6 +1730,22 @@ def leer_hoja_imput(path_excel):
                 return df
             except Exception:
                 return None
+
+    # Fallback seguro: si no se reconoció el encabezado por nombre, intenta
+    # detectar la fila donde la columna Y tenga valores de área conocidos.
+    areas_validas = {"BYCP", "FARMA", "BIENESTAR", "MSJE", "FIDELIZACION"}
+    for fila in range(max_filas):
+        try:
+            if df_raw.shape[1] < 25:
+                break
+            valores_y = [normalizar_texto(v) for v in df_raw.iloc[fila + 1:min(fila + 8, len(df_raw)), 24].tolist()]
+            if any(v in areas_validas for v in valores_y):
+                df = pd.read_excel(path_excel, sheet_name=hoja_objetivo, header=fila)
+                df = limpiar_dataframe_columnas(df)
+                print(Fore.GREEN + f"✓ Hoja IMPUT detectada por columna Y: {os.path.basename(path_excel)} (fila {fila+1})")
+                return df
+        except Exception:
+            continue
 
     return None
 
@@ -1707,25 +1757,53 @@ def construir_mapa_area_responsable(excel_files):
         if df_imput is None or df_imput.empty:
             continue
 
-        col_area = buscar_columna(df_imput, ["AREARESPONSABLE", "AREA RESPONSABLE", "AREA"])
+        col_area = buscar_columna(df_imput, ["AREARESPONSABLE", "AREA RESPONSABLE", "ÁREA RESPONSABLE", "AREA"])
         col_id_geo = obtener_columna_id_geocom(df_imput)
         col_id_fact = buscar_columna(df_imput, ["ID A FACTURAR", "ID FACTURAR", "ID A Facturar"])
+        col_id_lista_cliente = buscar_columna(df_imput, ["ID LISTA CLIENTE", "ID Lista Cliente", "ID LISTA CLIENTES"])
 
         if not col_area:
             continue
+
+        areas_detectadas = []
+        ids_mapeados_archivo = 0
 
         for _, row in df_imput.iterrows():
             area = normalizar_texto(row.get(col_area))
             if not area:
                 continue
 
-            id_geo = normalizar_local(row.get(col_id_geo)) if col_id_geo else None
-            id_fact = normalizar_local(row.get(col_id_fact)) if col_id_fact else None
+            areas_detectadas.append(area)
+            ids_posibles = [
+                normalizar_local(row.get(col_id_geo)) if col_id_geo else None,
+                normalizar_local(row.get(col_id_fact)) if col_id_fact else None,
+                normalizar_local(row.get(col_id_lista_cliente)) if col_id_lista_cliente else None,
+            ]
 
-            if id_geo:
-                mapa[id_geo] = area
-            if id_fact:
-                mapa[id_fact] = area
+            for pid in ids_posibles:
+                if pid:
+                    mapa[pid] = area
+                    ids_mapeados_archivo += 1
+
+        # Muchos Excel reales traen AreaResponsable en IMPUT/Input, pero los ID
+        # se completan en la hoja Completar. Si el área es única para el archivo,
+        # se puede asociar de forma segura a los IDs de Completar sin inventar reglas.
+        areas_unicas = sorted({a for a in areas_detectadas if a})
+        if ids_mapeados_archivo == 0 and len(areas_unicas) == 1:
+            area_unica = areas_unicas[0]
+            df_completar = leer_hoja_completar(file)
+            if df_completar is not None and not df_completar.empty:
+                columnas_id_completar = []
+                for posibles in (["ID GEOCOM", "ID GEO", "ID"], ["ID A FACTURAR", "ID FACTURAR"], ["ID LISTA CLIENTE", "ID LISTA CLIENTES"]):
+                    col = buscar_columna(df_completar, posibles)
+                    if col and col not in columnas_id_completar:
+                        columnas_id_completar.append(col)
+
+                for _, row in df_completar.iterrows():
+                    for col_id in columnas_id_completar:
+                        pid = normalizar_local(row.get(col_id))
+                        if pid:
+                            mapa[pid] = area_unica
 
     return mapa
 
@@ -1894,7 +1972,7 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
     applier_skus = normalizar_lista_skus(promo.get("applier_skus", []))
     applier_product_lists = [normalizar_texto(x) for x in promo.get("applier_product_lists", []) if normalizar_texto(x)]
 
-    col_area_excel = buscar_columna(grupo, ["AREARESPONSABLE", "AREA RESPONSABLE", "AREA"])
+    col_area_excel = buscar_columna(grupo, ["AREARESPONSABLE", "AREA RESPONSABLE", "ÁREA RESPONSABLE", "AREA"])
     area_responsable = normalizar_texto(grupo[col_area_excel].iloc[0]) if col_area_excel and not es_vacio(grupo[col_area_excel].iloc[0]) else ""
     if not area_responsable and mapa_area_responsable:
         area_responsable = normalizar_texto(mapa_area_responsable.get(id_excel))
