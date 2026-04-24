@@ -1,6 +1,7 @@
 import os
 import re
 import sys
+import unicodedata
 import json
 from datetime import datetime
 from io import StringIO, BytesIO
@@ -273,6 +274,13 @@ def _forzar_analisis_caso_especial_bycp_3x2(analisis):
 
 def _formatear_porcentaje_limpio(valor):
     return "-" if not valor or valor == "-" else valor
+
+
+def normalizar_clave_columna(v):
+    texto = str(v or "").replace("\n", " ").strip().upper()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    return re.sub(r"[^A-Z0-9]", "", texto)
 
 
 # ============================================================
@@ -1256,24 +1264,60 @@ def construir_mapa_area_responsable(excel_files):
             df_imput = None
         if df_imput is None or df_imput.empty:
             continue
-        cols = {str(c).strip().upper(): c for c in df_imput.columns}
-        col_id = None
-        for k, c in cols.items():
-            if "GEOCOM" in k or k in {"ID GEO", "ID GEOCOM", "ID"}:
-                col_id = c
-                break
+
+        cols = {normalizar_clave_columna(c): c for c in df_imput.columns}
+
         col_area = None
         for k, c in cols.items():
-            if "AREARESPONSABLE" in k or "AREA RESPONSABLE" in k or k == "AREA":
+            if k in {"AREARESPONSABLE", "AREA"}:
                 col_area = c
                 break
-        if not col_id or not col_area:
+
+        if not col_area:
             continue
+
+        columnas_id = []
+        for k, c in cols.items():
+            if k in {"IDGEOCOM", "IDGEO", "ID", "IDAFACTURAR", "IDLISTACLIENTE", "IDLISTACLIENTES"} or "GEOCOM" in k:
+                if c not in columnas_id:
+                    columnas_id.append(c)
+
+        areas_detectadas = []
+        ids_mapeados_archivo = 0
+
         for _, row in df_imput.iterrows():
-            pid = normalizar_local(row.get(col_id))
             area = normalizar_texto(row.get(col_area))
-            if pid and area:
-                mapa[pid] = area
+            if not area:
+                continue
+            areas_detectadas.append(area)
+            for col_id in columnas_id:
+                pid = normalizar_local(row.get(col_id))
+                if pid:
+                    mapa[pid] = area
+                    ids_mapeados_archivo += 1
+
+        # Fallback seguro: en archivos reales de campañas, IMPUT puede traer
+        # el AreaResponsable y Completar los ID. Si el área del archivo es única,
+        # se asocia a los ID de Completar. Si hay más de un área, no se asume nada.
+        areas_unicas = sorted({a for a in areas_detectadas if a})
+        if ids_mapeados_archivo == 0 and len(areas_unicas) == 1:
+            area_unica = areas_unicas[0]
+            try:
+                df_completar = leer_hoja_completar(file)
+            except Exception:
+                df_completar = None
+            if df_completar is not None and not df_completar.empty:
+                cols_completar = {normalizar_clave_columna(c): c for c in df_completar.columns}
+                columnas_id_completar = []
+                for k, c in cols_completar.items():
+                    if k in {"IDGEOCOM", "IDGEO", "ID", "IDAFACTURAR", "IDLISTACLIENTE", "IDLISTACLIENTES"} or "GEOCOM" in k:
+                        if c not in columnas_id_completar:
+                            columnas_id_completar.append(c)
+                for _, row in df_completar.iterrows():
+                    for col_id in columnas_id_completar:
+                        pid = normalizar_local(row.get(col_id))
+                        if pid:
+                            mapa[pid] = area_unica
     return mapa
 
 
