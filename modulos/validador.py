@@ -1161,6 +1161,7 @@ def parsear_promos(tree, export_name=None):
             "applier_percentage": None,
             "applier_quantity": None,
             "applier_to_quantity": False,
+            "applier_unit_price": False,
             "applier_strategy": None,
             "applier_skus": [],
             "applier_product_lists": [],
@@ -1227,6 +1228,7 @@ def parsear_promos(tree, export_name=None):
                 amount_node = ap.find("./amount")
                 qty_node = ap.find("./quantity")
                 tq_node = ap.find("./toQuantity")
+                unit_price_node = ap.find("./unitPrice")
                 strategy_node = ap.find("./strategy")
                 if amount_node is not None and amount_node.text:
                     d["applier_amount"] = float(amount_node.text)
@@ -1235,6 +1237,8 @@ def parsear_promos(tree, export_name=None):
                     d["applier_quantity"] = float(qty_node.text)
                 if tq_node is not None and tq_node.text:
                     d["applier_to_quantity"] = tq_node.text.strip().lower() == "true"
+                if unit_price_node is not None and unit_price_node.text:
+                    d["applier_unit_price"] = unit_price_node.text.strip().lower() == "true"
                 if strategy_node is not None and strategy_node.text:
                     try:
                         d["applier_strategy"] = int(float(strategy_node.text))
@@ -1257,6 +1261,7 @@ def parsear_promos(tree, export_name=None):
                 pn = ap.find("./percentage")
                 qty_node = ap.find("./quantity")
                 tq_node = ap.find("./toQuantity")
+                unit_price_node = ap.find("./unitPrice")
                 strategy_node = ap.find("./strategy")
                 if pn is not None and pn.text:
                     d["applier_percentage"] = float(pn.text)
@@ -1265,6 +1270,8 @@ def parsear_promos(tree, export_name=None):
                     d["applier_quantity"] = float(qty_node.text)
                 if tq_node is not None and tq_node.text:
                     d["applier_to_quantity"] = tq_node.text.strip().lower() == "true"
+                if unit_price_node is not None and unit_price_node.text:
+                    d["applier_unit_price"] = unit_price_node.text.strip().lower() == "true"
                 if strategy_node is not None and strategy_node.text:
                     try:
                         d["applier_strategy"] = int(float(strategy_node.text))
@@ -1287,6 +1294,7 @@ def parsear_promos(tree, export_name=None):
                 amount_node = ap.find("./amount")
                 qty_node = ap.find("./quantity")
                 tq_node = ap.find("./toQuantity")
+                unit_price_node = ap.find("./unitPrice")
                 strategy_node = ap.find("./strategy")
                 if amount_node is not None and amount_node.text:
                     d["applier_amount"] = float(amount_node.text)
@@ -1294,6 +1302,8 @@ def parsear_promos(tree, export_name=None):
                     d["applier_quantity"] = float(qty_node.text)
                 if tq_node is not None and tq_node.text:
                     d["applier_to_quantity"] = tq_node.text.strip().lower() == "true"
+                if unit_price_node is not None and unit_price_node.text:
+                    d["applier_unit_price"] = unit_price_node.text.strip().lower() == "true"
                 if strategy_node is not None and strategy_node.text:
                     try:
                         d["applier_strategy"] = int(float(strategy_node.text))
@@ -2671,15 +2681,33 @@ def validar_promocion_completar(id_geo, grupo, promo, listas_productos_export, m
             monto_ok = money_iguales(monto_pack_excel, promo.get("applier_amount"))
             skus_ok = applier_skus_nominal_total == esperado_skus
 
-            if monto_ok and skus_ok:
+            unit_price_ok = promo.get("applier_unit_price") is True
+
+            if unit_price_ok:
                 agregar_detalle(
                     detalles,
                     "OK",
                     "APPLIER",
-                    "Monto y productos del applier coinciden con Excel"
+                    "Check Por unidad activo correctamente para campaña NOMINAL"
+                )
+
+            if monto_ok and skus_ok and unit_price_ok:
+                agregar_detalle(
+                    detalles,
+                    "OK",
+                    "APPLIER",
+                    "Monto, productos y check Por unidad del applier coinciden con Excel"
                 )
             else:
                 ok = False
+
+                if not unit_price_ok:
+                    agregar_detalle(
+                        detalles,
+                        "ERR",
+                        "APPLIER",
+                        "Campaña NOMINAL requiere check Por unidad activo en el applier, pero el Export no lo trae"
+                    )
 
                 if not monto_ok:
                     agregar_detalle(
